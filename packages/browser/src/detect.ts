@@ -5,6 +5,7 @@
  * we probe candidate prefixes for a real CSRF token and use whichever works.
  * Shared by the on-load detection, the export run, and the debug report.
  */
+import { derivePrefix } from "./client";
 
 /** Prefixes implied by same-origin asset/link/form URLs already on the page. */
 export function discoverPrefixes(): string[] {
@@ -48,13 +49,24 @@ export function candidatePrefixes(): string[] {
   return [...new Set(list)];
 }
 
-/** Fetch the CSRF token at a given prefix, or null if it isn't there. */
+/** The __RequestVerificationToken embedded in the current page, if present.
+ *  Newer Epic ("PX") builds don't return it from /Home/CSRFToken. */
+export function pageToken(): string | null {
+  const el = document.querySelector('input[name="__RequestVerificationToken"]');
+  const v = el instanceof HTMLInputElement ? el.value : "";
+  return v || null;
+}
+
+/** Token from /Home/CSRFToken at a prefix (hidden input or bare body), else null. */
 export async function tokenAt(prefix: string): Promise<string | null> {
   try {
     const r = await fetch(`${location.origin}${prefix}/Home/CSRFToken`, { credentials: "include" });
     if (!r.ok) return null;
-    const m = /name="__RequestVerificationToken"[^>]*value="([^"]+)"/.exec(await r.text());
-    return m ? m[1]! : null;
+    const body = await r.text();
+    const m = /name="__RequestVerificationToken"[^>]*value="([^"]+)"/.exec(body);
+    if (m) return m[1]!;
+    const t = body.trim();
+    return t.length >= 16 && t.length <= 1024 && !/[<>{}"\s]/.test(t) ? t : null;
   } catch {
     return null;
   }
@@ -76,12 +88,22 @@ let memo: Resolved | null = null;
 export async function resolveMyChart(): Promise<Resolved | null> {
   if (memo) return memo;
   if (/\/Authentication\/Login|action=logout/i.test(location.href)) return null;
+  // Primary: probe candidate prefixes via /Home/CSRFToken (unchanged for the
+  // older Epic builds this already worked on).
   for (const prefix of candidatePrefixes()) {
     const token = await tokenAt(prefix);
     if (token) {
       memo = { origin: location.origin, prefix, token };
       return memo;
     }
+  }
+  // Fallback: newer Epic ("PX") serves no token at /Home/CSRFToken but embeds
+  // it in the page. If it's there, we ARE on MyChart — use it + the derived
+  // prefix (the app is loaded at that path).
+  const embedded = pageToken();
+  if (embedded) {
+    memo = { origin: location.origin, prefix: derivePrefix(location.pathname), token: embedded };
+    return memo;
   }
   return null;
 }

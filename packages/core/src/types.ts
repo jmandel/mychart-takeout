@@ -43,6 +43,12 @@ export interface MyChartClient {
     pathOrUrl: string,
     init?: FetchInit,
   ): Promise<{ status: number; bytes: Uint8Array }>;
+  /**
+   * Read the __RequestVerificationToken embedded in the current page, if the
+   * environment can (browser DOM / CDP evaluate). Newer Epic ("PX") builds
+   * don't return it from /Home/CSRFToken, so this is the reliable source.
+   */
+  getPageToken?(): Promise<string | null>;
 }
 
 /** Output: where export files land (fs tree, in-memory zip, ...). */

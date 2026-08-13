@@ -52,4 +52,10 @@ export class BrowserClient implements MyChartClient {
     const r = await fetch(this.resolve(pathOrUrl), this.init(init));
     return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
   }
+
+  async getPageToken(): Promise<string | null> {
+    const el = document.querySelector('input[name="__RequestVerificationToken"]');
+    const v = el instanceof HTMLInputElement ? el.value : "";
+    return v || null;
+  }
 }

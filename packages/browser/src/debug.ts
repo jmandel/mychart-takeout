@@ -1,4 +1,4 @@
-import { candidatePrefixes, discoverPrefixes } from "./detect";
+import { candidatePrefixes, discoverPrefixes, pageToken, resolveMyChart } from "./detect";
 
 /**
  * A debug report for when detection fails on someone's MyChart, meant to be
@@ -34,10 +34,22 @@ interface Probe {
   status?: number;
   finalUrl?: string;
   contentType?: string | null;
+  bodyLength?: number;
+  bodyClass?: string; // empty | bare-token | html | json | other
   tokenFound?: boolean;
   looksLikeLogin?: boolean;
   inputNames?: string[];
   error?: string;
+}
+
+/** Classify the CSRF response body without leaking its value. */
+function classifyBody(text: string): string {
+  const t = text.trim();
+  if (!t) return "empty";
+  if (/^\s*[<]/.test(t)) return "html";
+  if (/^\s*[{[]/.test(t)) return "json";
+  if (t.length >= 16 && t.length <= 1024 && !/[<>{}"\s]/.test(t)) return "bare-token";
+  return "other";
 }
 
 async function probe(prefix: string): Promise<Probe> {
@@ -63,6 +75,8 @@ async function probe(prefix: string): Promise<Probe> {
       status: r.status,
       finalUrl: redactUrl(r.url),
       contentType: r.headers.get("content-type"),
+      bodyLength: text.length,
+      bodyClass: classifyBody(text),
       tokenFound,
       looksLikeLogin: /login|sign in|log in|logout|saml|sso|authenticat/i.test(`${r.url} ${title}`),
       inputNames,
@@ -143,6 +157,8 @@ export async function collectDebugReport(): Promise<string> {
       firstPathSegment: location.pathname.split("/").filter(Boolean)[0] || "(none)",
       domDiscoveredPrefixes: discoverPrefixes(),
       candidatePrefixesTried: candidates,
+      pageTokenFound: pageToken() !== null, // newer Epic: token embedded in page
+      resolved: await resolveMyChart().then((r) => (r ? { prefix: r.prefix } : null)).catch(() => null),
     },
     csrfProbes: probes,
     signals: {

@@ -1,6 +1,45 @@
 import { describe, expect, test } from "bun:test";
-import { Mc } from "../src/mc";
+import { Mc, parseCsrfToken } from "../src/mc";
 import type { FetchInit, McResponse, MyChartClient } from "../src/types";
+
+describe("parseCsrfToken", () => {
+  test("hidden input (older Epic)", () => {
+    expect(parseCsrfToken('<input name="__RequestVerificationToken" value="tok-abc123" />')).toBe("tok-abc123");
+  });
+  test("bare token body (some newer builds)", () => {
+    expect(parseCsrfToken("  aB3-_x9YZ0123456789  ")).toBe("aB3-_x9YZ0123456789");
+  });
+  test("empty / html / json → null", () => {
+    expect(parseCsrfToken("")).toBeNull();
+    expect(parseCsrfToken("<html><body>nope</body></html>")).toBeNull();
+    expect(parseCsrfToken('{"a":1}')).toBeNull();
+  });
+});
+
+describe("Mc token fallback (newer Epic / PX)", () => {
+  test("uses getPageToken when /Home/CSRFToken returns no token", async () => {
+    let pageTokenReads = 0;
+    const client: MyChartClient = {
+      origin: "https://mychart.bilh.org",
+      prefix: "/MyChart-BILH",
+      async fetchText(url: string): Promise<McResponse> {
+        // PX build: CSRFToken endpoint 200 but empty (no parseable token)
+        if (url.endsWith("/Home/CSRFToken")) return { status: 200, contentType: null, url, body: "" };
+        return { status: 200, contentType: "application/json", url, body: "{}" };
+      },
+      async fetchBytes() {
+        return { status: 200, bytes: new Uint8Array() };
+      },
+      async getPageToken() {
+        pageTokenReads++;
+        return "page-embedded-token";
+      },
+    };
+    const mc = new Mc(client);
+    expect(await mc.token()).toBe("page-embedded-token");
+    expect(pageTokenReads).toBe(1);
+  });
+});
 
 /** Records every request; serves a CSRF page and echoes call shape as JSON. */
 class FakeClient implements MyChartClient {

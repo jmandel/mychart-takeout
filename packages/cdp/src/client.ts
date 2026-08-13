@@ -84,4 +84,12 @@ export class CdpClient implements MyChartClient {
     const raw = (await this.page.evaluate(expr)) as RawBytes;
     return { status: raw.status, bytes: new Uint8Array(Buffer.from(raw.b64, "base64")) };
   }
+
+  async getPageToken(): Promise<string | null> {
+    const v = (await this.page.evaluate(
+      `(() => { const e = document.querySelector('input[name="__RequestVerificationToken"]');` +
+        ` return e ? e.value : ""; })()`,
+    )) as string;
+    return v || null;
+  }
 }
