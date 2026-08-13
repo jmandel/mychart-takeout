@@ -65,6 +65,11 @@ structured/                   SOURCE OF TRUTH — raw JSON per domain, e.g.:
     threads_full/NNN_*.json   per-thread JSON
     threads_full/NNN_*_mN.html  each message body (rendered HTML)
   _captured_from_navigation/  (CDP exports only) best JSON per endpoint
+documents/other/              downloaded document CONTENT (not just the list):
+  NN_<desc>.<pdf|tif|html>      insurance cards, external-provider records,
+                                consent forms, orders, scans — often data that
+                                is in NO structured field and NO C-CDA
+  NN_<desc>_detail.json         per-document metadata + detail response
 documents/ccda/               (if --ccda) standards C-CDA all-visits package
   HealthSummary_all_visits_CCDA.zip + extracted/  one ClinicalDocument per visit
 dom/                          per-section page HTML/text snapshots (if enabled)
