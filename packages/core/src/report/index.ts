@@ -1,3 +1,4 @@
+import { EXPORT_SKILL_MD } from "../exportSkill";
 import type { ExportStore } from "../store";
 import { renderIndexCsvs } from "./csv";
 import { renderManifest } from "./manifest";
@@ -37,5 +38,8 @@ export async function buildReport(store: ExportStore, opts: ReportOpts): Promise
   await store.saveText("PATIENT_SUMMARY.md", renderMarkdown(S));
   await store.saveText("MANIFEST.json", renderManifest(S, [...store.savedFiles]));
   await store.saveText("README.md", renderReadme(S));
+  // Baked-in guide for an AI (or person) handed this export — written last so
+  // it isn't counted in MANIFEST (like README.md).
+  await store.saveText("SKILL.md", EXPORT_SKILL_MD);
   opts.log?.(summaryLogLine(S));
 }

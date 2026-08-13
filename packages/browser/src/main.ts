@@ -44,13 +44,18 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     log,
   });
 
-  // Preflight: confirm we're actually signed in before doing anything, so a
-  // click on a logged-out tab reports that instead of zipping login pages.
+  // Preflight: confirm this really is a signed-in MyChart tab before doing
+  // anything, so running it on the wrong page (or a logged-out one) reports
+  // clearly instead of producing a fake "Done" with an empty download.
   const tok = await ctx.mc.token().catch(() => null);
-  if (!tok || /\/Authentication\/Login|action=logout/i.test(location.href)) {
-    const msg = "Not signed in to MyChart. Open your chart, sign in, then run again.";
-    log(`!! ${msg}`);
-    overlay.setDone(new Uint8Array());
+  const looksLikeMyChart = tok !== null;
+  const loggedOut = /\/Authentication\/Login|action=logout/i.test(location.href);
+  if (!looksLikeMyChart || loggedOut) {
+    const msg = !looksLikeMyChart
+      ? `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there.`
+      : "You're signed out of MyChart. Sign in, then run again.";
+    log(`!! ${msg.replace(/\n/g, " ")}`);
+    overlay.setError(msg);
     throw new Error(msg);
   }
 
@@ -109,6 +114,13 @@ globalThis.__mychartExport = { run };
 // Interactive path: show the overlay with a Start button (idempotent re-paste).
 const overlay = ensureOverlay();
 overlay.onStart(() => {
-  void run().catch((e) => overlay.log(`!! export failed: ${e}`));
+  // run() sets its own error banner on a failed preflight; for anything else
+  // that throws, surface it as an error state (not a stuck "Running…").
+  void run().catch((e) => {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/isn't a signed-in MyChart page|signed out of MyChart/i.test(msg)) {
+      overlay.setError(`Export failed: ${msg}`);
+    }
+  });
 });
 overlay.log("Ready. Click Start export (or call __mychartExport.run()).");

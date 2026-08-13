@@ -7,6 +7,8 @@ export interface Overlay {
   /** Swap the Start button for a Download button holding the finished zip. */
   setDone(zip: Uint8Array, filename?: string): void;
   setRunning(): void;
+  /** Failure state: no download, red banner, clear message + Dismiss. */
+  setError(message: string): void;
   onStart(fn: () => void): void;
   root: HTMLElement;
 }
@@ -101,6 +103,25 @@ export function ensureOverlay(): Overlay {
       // Export finished: the tab no longer needs to stay open. Offer an
       // explicit Dismiss in addition to the title-bar ✕.
       note.textContent = "Done — safe to close.";
+      const dismiss = document.createElement("button");
+      dismiss.textContent = "Dismiss";
+      dismiss.style.cssText =
+        "background:#374151;color:#e5e7eb;border:0;border-radius:6px;padding:6px 12px;" +
+        "cursor:pointer;font:inherit;margin-left:auto;";
+      dismiss.addEventListener("click", () => root.remove());
+      bar.appendChild(dismiss);
+    },
+    setError(message: string) {
+      // No download — make failure unmistakable (red), not a fake "Done".
+      startBtn.remove();
+      root.style.borderColor = "#b91c1c";
+      title.style.background = "#7f1d1d";
+      const banner = document.createElement("div");
+      banner.textContent = message;
+      banner.style.cssText =
+        "padding:8px 12px;background:#7f1d1d;color:#fff;font-weight:600;white-space:pre-wrap;";
+      root.insertBefore(banner, bar);
+      note.textContent = "";
       const dismiss = document.createElement("button");
       dismiss.textContent = "Dismiss";
       dismiss.style.cssText =

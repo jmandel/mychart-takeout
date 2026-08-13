@@ -1,11 +1,16 @@
 {
   "name": "mychart-export",
   "private": true,
-  "workspaces": ["packages/*", "apps/*", "tools/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "tools/*"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "build:web": "bun run apps/web-build/build.ts"
+    "build:web": "bun run apps/web-build/build.ts",
+    "gen:skill": "bun tools/gen-export-skill.ts"
   },
   "devDependencies": {
     "@types/bun": "^1.2.21",
