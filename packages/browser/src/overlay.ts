@@ -186,9 +186,10 @@ export function ensureOverlay(): Overlay {
       /* clipboard may be blocked; the textarea is selected as a fallback */
     }
     overlay.log(
-      copied
-        ? "Debug report copied to your clipboard — paste it back to us."
-        : "Debug report ready — select the box above, copy it, and paste it back to us.",
+      (copied
+        ? "Debug report copied to your clipboard."
+        : "Debug report ready — select the box above and copy it.") +
+        " Review it, then share it PRIVATELY with Josh (it may include identifying details — please don't post it publicly).",
     );
     const dl = document.createElement("button");
     dl.textContent = "Download debug report";

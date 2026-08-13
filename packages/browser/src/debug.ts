@@ -1,13 +1,15 @@
 import { candidatePrefixes, discoverPrefixes } from "./detect";
 
 /**
- * A shareable debug report for when detection fails on someone's MyChart.
+ * A debug report for when detection fails on someone's MyChart, meant to be
+ * reviewed and shared PRIVATELY with Josh (not posted publicly).
  *
- * Designed to be pasted PUBLICLY (e.g. back to us in a comment thread), so it
- * carries only structural signal — never PHI: no page text, no field values,
- * no cookie values, no query strings. It actively probes candidate path
- * prefixes for a CSRF token and inspects the page, so the output points at WHY
- * we couldn't find MyChart and what prefix/token source would work instead.
+ * It deliberately avoids the obvious PHI — no page text, no field values, no
+ * cookie values, no query strings — but it still includes identifying context
+ * (your health system's host, cookie names, etc.), so it is NOT for public
+ * posting. It actively probes candidate path prefixes for a CSRF token and
+ * inspects the page, so the output points at WHY MyChart wasn't found and what
+ * prefix/token source would work instead.
  */
 
 function redactUrl(u: string): string {
@@ -127,7 +129,7 @@ export async function collectDebugReport(): Promise<string> {
 
   const report = {
     tool: "mychart-takeout debug report",
-    note: "No PHI: structural signal only (names/prefixes/statuses). Safe to share.",
+    note: "May include identifying details (your health system, cookie names). Review it, then share PRIVATELY with Josh — please don't post it publicly.",
     page: {
       origin: location.origin,
       host: location.host,

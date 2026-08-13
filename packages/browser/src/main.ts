@@ -39,7 +39,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   // clearly instead of producing a fake "Done" with an empty download.
   const resolved = await resolveMyChart();
   if (!resolved) {
-    const msg = `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there — or click Debug to send us a report.`;
+    const msg = `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.`;
     log(`!! ${msg.replace(/\n/g, " ")}`);
     overlay.setError(msg);
     throw new Error(msg);
@@ -130,7 +130,7 @@ void (async () => {
   if (!resolved) {
     overlay.setError(
       `This isn't a signed-in MyChart page (${location.host}).\n` +
-        "Open your MyChart portal, sign in, then run it there — or click Debug to send us a report.",
+        "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",
     );
   } else {
     overlay.log(`Detected MyChart at ${resolved.origin}${resolved.prefix}.`);
