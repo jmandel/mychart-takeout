@@ -140,7 +140,10 @@ function landingPage(bmHref: string): string {
     <li>Secure messages</li><li>Care team</li>
     <li>Medical / family / social history</li><li>Insurance &amp; coverage</li>
     <li>Referrals</li><li>Growth charts (pediatric)</li>
-    <li>Patient-tracked vitals</li><li>A readable <code>PATIENT_SUMMARY.md</code> + CSV indexes</li>
+    <li>Implanted devices (UDI, model, serial)</li><li>Care to-dos &amp; reminders</li>
+    <li>Access log — who viewed your record</li><li>Connected apps &amp; linked organizations</li>
+    <li>Notification &amp; security settings</li><li>Patient-tracked vitals</li>
+    <li>Standards C-CDA package</li><li>A readable <code>PATIENT_SUMMARY.md</code> + CSV indexes</li>
   </ul>
 
   <h2>How it protects your data</h2>

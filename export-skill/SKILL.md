@@ -41,6 +41,16 @@ structured/                   SOURCE OF TRUTH — raw JSON per domain, e.g.:
   medications-ext/ histories/ goals/ personal-info/ insurance/ care-team/
   covid/ preventive-care/ questionnaires/ relationships/ letters/ item-feed/
   documents/ upcoming-orders/ referrals/ education/ growth-charts/
+  implants/                   implanted/explanted devices (UDI, model, serial)
+  todo/                       care to-dos, tasks, reminders
+  linked-orgs/                other organizations your record connects to
+  sharing/                    record-sharing hub + Care/Share Everywhere posture
+  communication-prefs/        notification/communication settings + text consent
+  security-settings/          2FA status, password age, remembered devices
+  premium-billing/            insurance premium-billing accounts
+  access-log/                 WHO accessed your record — portal_page_*.json (self/
+                              staff) + third-party_page_*.json (apps that synced
+                              your data via OAuth); paginated 50/page
   track-my-health/            patient-tracked vitals (flowsheet readings)
   test-results/
     GetList.json              all result orders
