@@ -66,6 +66,8 @@ const today = (): string => new Date().toISOString().slice(0, 10);
 const PHASE_ALIAS: Record<string, string> = {
   "test-results": "testResults",
   testresults: "testResults",
+  "access-log": "accessLog",
+  accesslog: "accessLog",
 };
 const norm = (p: string): string => PHASE_ALIAS[p] ?? p;
 
@@ -99,6 +101,7 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
   await run("visits", phases.visits);
   await run("messages", phases.messages);
   await run("flowsheets", phases.flowsheets);
+  await run("accessLog", phases.accessLog);
   await run("ccda", phases.ccda);
   if (!o.noDom) await run("dom", phases.dom);
   if (o.doSalvage && o.active.has("salvage")) salvage(outDir, session.origin);
@@ -124,7 +127,7 @@ async function runExport(a: Args): Promise<void> {
   const ccda = !!a.flags.ccda;
   const proxies = !!a.flags.proxies;
   const defaults = [
-    "structured", "testResults", "visits", "messages", "flowsheets",
+    "structured", "testResults", "visits", "messages", "flowsheets", "accessLog",
     ...(ccda ? ["ccda"] : []), "dom", "salvage", "report",
   ];
   const only = (a.multi.only ?? []).map(norm);

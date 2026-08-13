@@ -14,12 +14,15 @@ export async function structured(ctx: PhaseCtx): Promise<void> {
   for (const { domain, path, body } of SIMPLE) {
     try {
       const r = await ctx.mc.api(path, resolveBody(body, ctx));
-      const name = path.split("api/")[1]!.replace(/\//g, "__");
+      // Name from the part after "api/" when present, else the whole path —
+      // so non-api endpoints (e.g. Community/…, Authentication/…) work too.
+      const rel = path.includes("api/") ? path.split("api/")[1]! : path;
+      const name = rel.replace(/\//g, "__");
       await ctx.store.saveJson(
         `structured/${domain}/${name}.json`,
         r.json != null ? r.json : { _raw: r.body },
       );
-      ctx.rec(domain, path.split("api/")[1]!, r);
+      ctx.rec(domain, rel, r);
     } catch (e) {
       ctx.log(`  ERR ${path} ${e}`);
     }

@@ -63,6 +63,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     "visits",
     "messages",
     "flowsheets",
+    "accessLog",
     ...(opts.ccda ? (["ccda"] as const) : []),
     ...(opts.dom !== false ? (["dom"] as const) : []),
   ];

@@ -45,6 +45,29 @@ export const SIMPLE: SimpleEntry[] = [
   // Pediatric growth charts (measurement series + percentiles); confirmed live
   // for a proxy child. Empty for patients without growth data.
   { domain: "growth-charts", path: "api/growth-charts/GetGrowthCharts", body: {} },
+  // Implanted/explanted devices (pacemakers, ICDs, leads, IOLs, ortho hardware)
+  // with manufacturer/model/serial/UDI + implant procedure. Often the single
+  // most consequential structured fact and absent from a C-CDA. (Endpoint
+  // learned from Hugo Campos's OpenKP.)
+  { domain: "implants", path: "api/implants/GetImplants", body: {} },
+  // Care to-dos / tasks and reminders.
+  { domain: "todo", path: "api/todo/GetTasks", body: {} },
+  { domain: "todo", path: "api/todo/GetPersistentTasks", body: {} },
+  // Linked / community organizations your record connects to (Happy Together).
+  { domain: "linked-orgs", path: "Community/External/GetMyChartInactiveOrgs", body: {} },
+  // Record sharing: hub activities + Care/Share Everywhere security posture.
+  { domain: "sharing", path: "api/sharing-hub/GetSelfServiceActivities", body: {} },
+  { domain: "sharing", path: "api/sharing-hub/GetSecurity", body: {} },
+  // Communication / notification preferences (which channels for which alerts).
+  { domain: "communication-prefs", path: "api/communicationPreferences/GetPreferences", body: {} },
+  { domain: "communication-prefs", path: "api/communicationPreferences/GetContactInformation", body: {} },
+  { domain: "communication-prefs", path: "api/textoptin/GetConsentDataWithTextOptInAccess", body: {} },
+  // Account security: 2FA status, password age, remembered-device policy.
+  { domain: "security-settings", path: "api/security-settings/GetInitialSettings", body: {} },
+  // Trusted / remembered devices signed into this account.
+  { domain: "security-settings", path: "Authentication/RememberDevices/GetUserDeviceListInfo", body: {} },
+  // Insurance premium-billing accounts (where offered).
+  { domain: "premium-billing", path: "api/premium-billing/GetAccounts", body: {} },
 ];
 
 export type ClassicKind = "form" | "get" | "nobody";

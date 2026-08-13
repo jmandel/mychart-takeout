@@ -1,4 +1,5 @@
 import type { PhaseCtx } from "../ctx";
+import { accessLog } from "./accessLog";
 import { ccda } from "./ccda";
 import { dom } from "./dom";
 import { flowsheets } from "./flowsheets";
@@ -10,12 +11,11 @@ import { visits } from "./visits";
 export type Phase = (ctx: PhaseCtx) => Promise<void>;
 
 /**
- * Phase registry — 1:1 ports of export.py's phase_* functions.
- * (The salvage phase is CDP-only and lives in packages/cdp because it reads
- * the driver's network log.)
+ * Phase registry. (The salvage phase is CDP-only and lives in packages/cdp
+ * because it reads the driver's network log.)
  */
 export const phases: Record<
-  "structured" | "testResults" | "visits" | "messages" | "flowsheets" | "ccda" | "dom",
+  "structured" | "testResults" | "visits" | "messages" | "flowsheets" | "accessLog" | "ccda" | "dom",
   Phase
 > = {
   structured,
@@ -23,6 +23,7 @@ export const phases: Record<
   visits,
   messages,
   flowsheets,
+  accessLog,
   ccda,
   dom,
 };
