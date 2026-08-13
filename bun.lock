@@ -1,0 +1,89 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "mychart-export",
+      "devDependencies": {
+        "@types/bun": "^1.2.21",
+        "playwright-core": "^1.50.0",
+        "typescript": "^5.7.3",
+      },
+    },
+    "apps/cli": {
+      "name": "@mychart/cli",
+      "version": "0.1.0",
+      "bin": {
+        "mychart": "src/main.ts",
+      },
+      "dependencies": {
+        "@mychart/cdp": "workspace:*",
+        "@mychart/core": "workspace:*",
+      },
+    },
+    "apps/web-build": {
+      "name": "@mychart/web-build",
+      "version": "0.1.0",
+      "dependencies": {
+        "@mychart/browser": "workspace:*",
+        "@mychart/core": "workspace:*",
+      },
+    },
+    "packages/browser": {
+      "name": "@mychart/browser",
+      "version": "0.1.0",
+      "dependencies": {
+        "@mychart/core": "workspace:*",
+        "fflate": "^0.8.2",
+      },
+    },
+    "packages/cdp": {
+      "name": "@mychart/cdp",
+      "version": "0.1.0",
+      "dependencies": {
+        "@mychart/core": "workspace:*",
+      },
+    },
+    "packages/core": {
+      "name": "@mychart/core",
+      "version": "0.1.0",
+      "dependencies": {
+        "fflate": "^0.8.2",
+      },
+    },
+    "tools/mock-mychart": {
+      "name": "@mychart/mock-mychart",
+      "version": "0.1.0",
+      "dependencies": {
+        "@mychart/core": "workspace:*",
+      },
+    },
+  },
+  "packages": {
+    "@mychart/browser": ["@mychart/browser@workspace:packages/browser"],
+
+    "@mychart/cdp": ["@mychart/cdp@workspace:packages/cdp"],
+
+    "@mychart/cli": ["@mychart/cli@workspace:apps/cli"],
+
+    "@mychart/core": ["@mychart/core@workspace:packages/core"],
+
+    "@mychart/mock-mychart": ["@mychart/mock-mychart@workspace:tools/mock-mychart"],
+
+    "@mychart/web-build": ["@mychart/web-build@workspace:apps/web-build"],
+
+    "@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
+
+    "@types/node": ["@types/node@26.2.0", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-5IviulTZeRNp2vAJ514cc/HUlY5nZ9fCbq9DMyC52BrhFZACo3nI0R7qBxhQmo/d27NFe96ur/b7Wwxklda+kg=="],
+
+    "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+
+    "fflate": ["fflate@0.8.3", "", {}, "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA=="],
+
+    "playwright-core": ["playwright-core@1.62.1", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw=="],
+
+    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "undici-types": ["undici-types@8.3.0", "", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
+  }
+}

@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Typecheck
+        run: bunx tsc --noEmit
+      - name: Test
+        # Unit + golden tests. The two headless-Chromium e2e suites auto-skip
+        # when no browser is present (findChromium() → null), keeping CI fast
+        # and deterministic; they run locally where a browser is available.
+        run: bun test

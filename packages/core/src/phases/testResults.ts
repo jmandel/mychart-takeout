@@ -1,0 +1,109 @@
+import type { PhaseCtx } from "../ctx";
+import { isRecord, pad2, slug } from "../util";
+
+/**
+ * Collect per-order keys (eorderid) from the GetList payload. On MyChart these
+ * are `newResultGroups[].key`; we search for any array under a key containing
+ * "resultgroup" whose objects carry a string `key`, so payload-shape drift or
+ * a renamed container still resolves. Order-preserving dedupe.
+ */
+function eorderidsFromList(getList: unknown): string[] {
+  const eids: string[] = [];
+  const push = (k: unknown) => {
+    if (typeof k === "string" && k && !eids.includes(k)) eids.push(k);
+  };
+  const walk = (o: unknown): void => {
+    if (Array.isArray(o)) {
+      for (const v of o) walk(v);
+    } else if (isRecord(o)) {
+      for (const [key, val] of Object.entries(o)) {
+        if (/resultgroup/i.test(key) && Array.isArray(val)) {
+          for (const g of val) if (isRecord(g)) push(g.key);
+        }
+        walk(val);
+      }
+    }
+  };
+  walk(getList);
+  return eids;
+}
+
+/**
+ * eorderids from the rendered app page's detail links — the legacy source,
+ * kept as a fallback. Not used in browser (bookmarklet) mode: loading the
+ * `app/*` SPA in a frame trips Epic's anti-framing logout, and DomAccess
+ * there fetches an inert shell that has no rendered links anyway.
+ */
+async function eorderidsFromDom(ctx: PhaseCtx): Promise<string[]> {
+  if (!ctx.dom) return [];
+  const hrefs = await ctx.dom.withSection("app/test-results", 3500, (page) =>
+    page.hrefs('a.ResultDetailsLink, a[href*="test-results/details"]'),
+  );
+  const eids: string[] = [];
+  for (const h of hrefs ?? []) {
+    const m = /eorderid=([^&]+)/.exec(h ?? "");
+    if (m && !eids.includes(m[1]!)) eids.push(m[1]!);
+  }
+  return eids;
+}
+
+/** phase_test_results: full list + per-order details keyed by eorderid. */
+export async function testResults(ctx: PhaseCtx): Promise<void> {
+  ctx.log("\n== test results: list + per-order details ==");
+  const r = await ctx.mc.api("api/test-results/GetList", {
+    groupType: "UNINITIALIZED",
+    searchString: "",
+    maxResults: 9999,
+  });
+  if (r.json != null) {
+    await ctx.store.saveJson("structured/test-results/GetList.json", r.json);
+    ctx.rec("test-results", "GetList", r);
+  }
+  // Prefer keys straight from the list payload — no page load, works in every
+  // mode. Fall back to the rendered page only if the payload yielded nothing.
+  let eids = eorderidsFromList(r.json);
+  let source = "list";
+  if (eids.length === 0) {
+    eids = await eorderidsFromDom(ctx);
+    source = "dom";
+  }
+  await ctx.store.saveJson("structured/test-results/_detail_links.json", eids);
+  ctx.log(`  detail links: ${eids.length} (from ${source})`);
+  if (eids.length === 0) {
+    ctx.rec("test-results", "GetDetails", null, "no eorderids found (list + dom empty)");
+    return;
+  }
+  for (let i = 0; i < eids.length; i++) {
+    const eid = eids[i]!;
+    try {
+      const d = await ctx.mc.api("api/test-results/GetDetails", {
+        orderKey: eid,
+        organizationID: "",
+        PageNonce: ctx.nonce,
+      });
+      if (d.json != null) {
+        const detail = d.json;
+        // deterministic name: NN_<orderName>
+        let name = "item";
+        const results =
+          isRecord(detail) && Array.isArray(detail.results) && detail.results.length > 0
+            ? detail.results
+            : [{}];
+        const first = results[0];
+        const firstName = isRecord(first) && typeof first.name === "string" && first.name ? first.name : "";
+        const orderName =
+          isRecord(detail) && typeof detail.orderName === "string" && detail.orderName
+            ? detail.orderName
+            : "";
+        name = slug(firstName || orderName || "result", 40);
+        await ctx.store.saveJson(`structured/test-results/details/${pad2(i)}_${name}.json`, {
+          eorderid: eid,
+          detail,
+        });
+      }
+    } catch (e) {
+      ctx.log(`   detail err ${e}`);
+    }
+  }
+  ctx.rec("test-results", "GetDetails", { status: 200, body: "" }, `${eids.length} orders`);
+}

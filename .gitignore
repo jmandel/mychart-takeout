@@ -1,0 +1,23 @@
+# PHI — exports never enter git
+export/
+export*/
+*.zip
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# js
+node_modules/
+dist/
+*.tsbuildinfo
+
+# local/env
+.env
+.env.*
+*.local
+.DS_Store
+
+# local PHI sample exports for review
+sample-exports/

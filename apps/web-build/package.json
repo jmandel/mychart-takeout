@@ -1,0 +1,9 @@
+{
+  "name": "@mychart/web-build",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@mychart/core": "workspace:*",
+    "@mychart/browser": "workspace:*"
+  }
+}

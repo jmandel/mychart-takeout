@@ -1,0 +1,9 @@
+{
+  "name": "@mychart/mock-mychart",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/server.ts",
+  "dependencies": {
+    "@mychart/core": "workspace:*"
+  }
+}
