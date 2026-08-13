@@ -1,6 +1,7 @@
-# PHI — exports never enter git
+# PHI — export output dirs never enter git (but NOT export-skill/, which is source)
 export/
-export*/
+export[0-9]*/
+export_*/
 *.zip
 
 # python
