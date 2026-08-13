@@ -7,6 +7,8 @@ export interface Overlay {
   /** Swap the Start button for a Download button holding the finished zip. */
   setDone(zip: Uint8Array, filename?: string): void;
   setRunning(): void;
+  /** Reveal the Start button once we've confirmed a signed-in MyChart page. */
+  setReady(): void;
   /** Failure state: no download, red banner, clear message + Dismiss. */
   setError(message: string): void;
   onStart(fn: () => void): void;
@@ -57,12 +59,13 @@ export function ensureOverlay(): Overlay {
 
   const startBtn = document.createElement("button");
   startBtn.textContent = "Start export";
+  // Hidden until setReady() confirms this is a signed-in MyChart page.
   startBtn.style.cssText =
-    "background:#2563eb;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit;";
+    "background:#2563eb;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit;display:none;";
   bar.appendChild(startBtn);
 
   const note = document.createElement("span");
-  note.textContent = "Keep this tab open; close the tab to cancel.";
+  note.textContent = "Checking this is a MyChart page…";
   note.style.cssText = "opacity:.7;align-self:center;";
   bar.appendChild(note);
 
@@ -79,6 +82,10 @@ export function ensureOverlay(): Overlay {
     },
     onStart(fn: () => void) {
       startFn = fn;
+    },
+    setReady() {
+      startBtn.style.display = "";
+      note.textContent = "Ready — click Start export. Keep this tab open.";
     },
     setRunning() {
       startBtn.disabled = true;

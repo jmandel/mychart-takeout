@@ -7,7 +7,7 @@
  * log), and the iframe-based dom phase covers the pages whose JSON only
  * renders in-page. Screenshots are likewise CDP-only.
  */
-import { buildReport, makeCtx, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
+import { buildReport, makeCtx, Mc, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
 import { BrowserClient, derivePrefix } from "./client";
 import { FetchDom } from "./fetchDom";
 import { exportFilename } from "./filename";
@@ -111,7 +111,9 @@ declare global {
 
 globalThis.__mychartExport = { run };
 
-// Interactive path: show the overlay with a Start button (idempotent re-paste).
+// Interactive path: show the overlay, but only reveal Start once we've
+// confirmed this is a signed-in MyChart page — so the wrong page never offers
+// a button that would just fail.
 const overlay = ensureOverlay();
 overlay.onStart(() => {
   // run() sets its own error banner on a failed preflight; for anything else
@@ -123,4 +125,20 @@ overlay.onStart(() => {
     }
   });
 });
-overlay.log("Ready. Click Start export (or call __mychartExport.run()).");
+
+void (async () => {
+  const prefix = derivePrefix(location.pathname);
+  const mc = new Mc(new BrowserClient(location.origin, prefix));
+  const tok = await mc.token().catch(() => null);
+  const loggedOut = /\/Authentication\/Login|action=logout/i.test(location.href);
+  if (!tok || loggedOut) {
+    overlay.setError(
+      !tok
+        ? `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there.`
+        : "You're signed out of MyChart. Sign in, then run again.",
+    );
+  } else {
+    overlay.log(`Detected MyChart at ${location.host}${prefix}.`);
+    overlay.setReady();
+  }
+})();
