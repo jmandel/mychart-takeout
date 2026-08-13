@@ -37,7 +37,9 @@ export const SIMPLE: SimpleEntry[] = [
   { domain: "track-my-health", path: "api/track-my-health/GetExternalAccounts", body: {} },
   { domain: "letters", path: "api/letters/GetLettersList", body: {} },
   { domain: "item-feed", path: "api/item-feed/FetchItemFeed", body: "ITEMFEED" },
-  { domain: "documents", path: "api/documents/viewer/LoadOtherDocuments", body: {} },
+  // isInitialLoad:true is required — a bare {} returns an empty list.
+  { domain: "documents", path: "api/documents/viewer/LoadOtherDocuments", body: { isInitialLoad: true } },
+  { domain: "documents", path: "api/documents/viewer/LoadDocumentsToSign", body: {} },
   // Discovered via CDP passive capture on other instances (not in the original instance's
   // menu, but standard Epic activities); absent sites degrade to a gaps row.
   { domain: "referrals", path: "api/referrals/listReferrals", body: {} },

@@ -1,6 +1,7 @@
 import type { PhaseCtx } from "../ctx";
 import { accessLog } from "./accessLog";
 import { ccda } from "./ccda";
+import { documents } from "./documents";
 import { dom } from "./dom";
 import { flowsheets } from "./flowsheets";
 import { messages } from "./messages";
@@ -15,7 +16,8 @@ export type Phase = (ctx: PhaseCtx) => Promise<void>;
  * because it reads the driver's network log.)
  */
 export const phases: Record<
-  "structured" | "testResults" | "visits" | "messages" | "flowsheets" | "accessLog" | "ccda" | "dom",
+  | "structured" | "testResults" | "visits" | "messages" | "flowsheets"
+  | "accessLog" | "documents" | "ccda" | "dom",
   Phase
 > = {
   structured,
@@ -24,6 +26,7 @@ export const phases: Record<
   messages,
   flowsheets,
   accessLog,
+  documents,
   ccda,
   dom,
 };
