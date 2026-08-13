@@ -7,8 +7,10 @@
  * log), and the iframe-based dom phase covers the pages whose JSON only
  * renders in-page. Screenshots are likewise CDP-only.
  */
-import { buildReport, makeCtx, Mc, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
-import { BrowserClient, derivePrefix } from "./client";
+import { buildReport, makeCtx, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
+import { BrowserClient } from "./client";
+import { collectDebugReport } from "./debug";
+import { resolveMyChart } from "./detect";
 import { FetchDom } from "./fetchDom";
 import { exportFilename } from "./filename";
 import { ensureOverlay } from "./overlay";
@@ -25,14 +27,24 @@ export interface RunOpts {
 }
 
 async function run(opts: RunOpts = {}): Promise<Uint8Array> {
-  const origin = location.origin;
-  const prefix = derivePrefix(location.pathname);
   const overlay = ensureOverlay();
   overlay.setRunning();
   const log = (m: string) => {
     overlay.log(m);
     console.log(m);
   };
+
+  // Resolve WHERE MyChart is (correct path prefix) and confirm we're signed in,
+  // by probing candidate prefixes for a real CSRF token. Failing here reports
+  // clearly instead of producing a fake "Done" with an empty download.
+  const resolved = await resolveMyChart();
+  if (!resolved) {
+    const msg = `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there — or click Debug to send us a report.`;
+    log(`!! ${msg.replace(/\n/g, " ")}`);
+    overlay.setError(msg);
+    throw new Error(msg);
+  }
+  const { origin, prefix } = resolved;
 
   const client = new BrowserClient(origin, prefix);
   const sink = new ZipSink();
@@ -43,21 +55,6 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     log,
   });
-
-  // Preflight: confirm this really is a signed-in MyChart tab before doing
-  // anything, so running it on the wrong page (or a logged-out one) reports
-  // clearly instead of producing a fake "Done" with an empty download.
-  const tok = await ctx.mc.token().catch(() => null);
-  const looksLikeMyChart = tok !== null;
-  const loggedOut = /\/Authentication\/Login|action=logout/i.test(location.href);
-  if (!looksLikeMyChart || loggedOut) {
-    const msg = !looksLikeMyChart
-      ? `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there.`
-      : "You're signed out of MyChart. Sign in, then run again.";
-    log(`!! ${msg.replace(/\n/g, " ")}`);
-    overlay.setError(msg);
-    throw new Error(msg);
-  }
 
   log(`Exporting from ${origin}${prefix} …`);
   const order: (keyof typeof phases)[] = [
@@ -125,20 +122,18 @@ overlay.onStart(() => {
     }
   });
 });
+// The Debug button works in any state — especially when detection fails.
+overlay.onDebug(() => collectDebugReport());
 
 void (async () => {
-  const prefix = derivePrefix(location.pathname);
-  const mc = new Mc(new BrowserClient(location.origin, prefix));
-  const tok = await mc.token().catch(() => null);
-  const loggedOut = /\/Authentication\/Login|action=logout/i.test(location.href);
-  if (!tok || loggedOut) {
+  const resolved = await resolveMyChart();
+  if (!resolved) {
     overlay.setError(
-      !tok
-        ? `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there.`
-        : "You're signed out of MyChart. Sign in, then run again.",
+      `This isn't a signed-in MyChart page (${location.host}).\n` +
+        "Open your MyChart portal, sign in, then run it there — or click Debug to send us a report.",
     );
   } else {
-    overlay.log(`Detected MyChart at ${location.host}${prefix}.`);
+    overlay.log(`Detected MyChart at ${resolved.origin}${resolved.prefix}.`);
     overlay.setReady();
   }
 })();

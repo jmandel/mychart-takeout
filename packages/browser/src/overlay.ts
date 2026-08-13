@@ -12,6 +12,8 @@ export interface Overlay {
   /** Failure state: no download, red banner, clear message + Dismiss. */
   setError(message: string): void;
   onStart(fn: () => void): void;
+  /** Wire the "Debug" button: fn returns the report text to copy/download. */
+  onDebug(fn: () => Promise<string>): void;
   root: HTMLElement;
 }
 
@@ -69,9 +71,19 @@ export function ensureOverlay(): Overlay {
   note.style.cssText = "opacity:.7;align-self:center;";
   bar.appendChild(note);
 
+  // Always-present Debug button — useful precisely when detection fails.
+  const debugBtn = document.createElement("button");
+  debugBtn.textContent = "Debug";
+  debugBtn.title = "Collect a shareable, PHI-free debug report";
+  debugBtn.style.cssText =
+    "background:#374151;color:#e5e7eb;border:0;border-radius:6px;padding:6px 12px;" +
+    "cursor:pointer;font:inherit;margin-left:auto;";
+  bar.appendChild(debugBtn);
+
   document.body.appendChild(root);
 
   let startFn: (() => void) | null = null;
+  let debugFn: (() => Promise<string>) | null = null;
   const overlay: Overlay = {
     root,
     log(line: string) {
@@ -82,6 +94,9 @@ export function ensureOverlay(): Overlay {
     },
     onStart(fn: () => void) {
       startFn = fn;
+    },
+    onDebug(fn: () => Promise<string>) {
+      debugFn = fn;
     },
     setReady() {
       startBtn.style.display = "";
@@ -141,6 +156,55 @@ export function ensureOverlay(): Overlay {
   startBtn.addEventListener("click", () => {
     overlay.setRunning();
     startFn?.();
+  });
+  debugBtn.addEventListener("click", async () => {
+    if (!debugFn || debugBtn.disabled) return;
+    debugBtn.disabled = true;
+    const label = debugBtn.textContent;
+    debugBtn.textContent = "Collecting…";
+    let text: string;
+    try {
+      text = await debugFn();
+    } catch (e) {
+      text = `debug report failed: ${e}`;
+    }
+    // Show the report in a copyable box + Copy/Download; try clipboard too.
+    const ta = document.createElement("textarea");
+    ta.readOnly = true;
+    ta.value = text;
+    ta.style.cssText =
+      "width:100%;height:120px;margin-top:6px;background:#0b1220;color:#cbd5e1;border:1px solid #374151;" +
+      "border-radius:6px;font:11px/1.4 ui-monospace,Menlo,monospace;box-sizing:border-box;padding:6px;";
+    logBox.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } catch {
+      /* clipboard may be blocked; the textarea is selected as a fallback */
+    }
+    overlay.log(
+      copied
+        ? "Debug report copied to your clipboard — paste it back to us."
+        : "Debug report ready — select the box above, copy it, and paste it back to us.",
+    );
+    const dl = document.createElement("button");
+    dl.textContent = "Download debug report";
+    dl.style.cssText =
+      "background:#2563eb;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit;";
+    dl.addEventListener("click", () => {
+      const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "mychart-takeout-debug.txt";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    });
+    bar.insertBefore(dl, debugBtn);
+    debugBtn.textContent = label;
+    debugBtn.disabled = false;
   });
   (root as HTMLElement & { __overlay?: Overlay }).__overlay = overlay;
   return overlay;
