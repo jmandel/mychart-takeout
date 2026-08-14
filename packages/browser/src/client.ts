@@ -39,13 +39,29 @@ export class BrowserClient implements MyChartClient {
       headers: init.headers ?? {},
     };
     if (init.body !== undefined) r.body = init.body;
+    if (init.timeoutMs) r.signal = AbortSignal.timeout(init.timeoutMs);
     return r;
+  }
+
+  /** Normalize an abort-by-timeout so Mc can classify it (message: "timeout…"). */
+  private static rethrow(e: unknown, p: string, timeoutMs?: number): never {
+    if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      step(`✗ timeout after ${timeoutMs}ms ${p}`);
+      throw new Error(`timeout after ${timeoutMs}ms: ${p}`);
+    }
+    step(`✗ network-error ${p}`);
+    throw e;
   }
 
   async fetchText(pathOrUrl: string, init: FetchInit = {}): Promise<McResponse> {
     const p = journalPath(pathOrUrl);
     step(`→ ${init.method ?? (init.body ? "POST" : "GET")} ${p}`); // persisted BEFORE the fetch
-    const r = await fetch(this.resolve(pathOrUrl), this.init(init));
+    let r: Response;
+    try {
+      r = await fetch(this.resolve(pathOrUrl), this.init(init));
+    } catch (e) {
+      BrowserClient.rethrow(e, p, init.timeoutMs);
+    }
     const headers: Record<string, string> = {};
     r.headers.forEach((v, k) => (headers[k] = v));
     step(`✓ ${r.status} ${p}${isLoggedOutUrl(r.url) ? " ← LOGGED OUT (redirected to login)" : ""}`);
@@ -64,7 +80,12 @@ export class BrowserClient implements MyChartClient {
   ): Promise<{ status: number; bytes: Uint8Array }> {
     const p = journalPath(pathOrUrl);
     step(`→ GET(bytes) ${p}`);
-    const r = await fetch(this.resolve(pathOrUrl), this.init(init));
+    let r: Response;
+    try {
+      r = await fetch(this.resolve(pathOrUrl), this.init(init));
+    } catch (e) {
+      BrowserClient.rethrow(e, p, init.timeoutMs);
+    }
     step(`✓ ${r.status} (bytes) ${p}${isLoggedOutUrl(r.url) ? " ← LOGGED OUT" : ""}`);
     return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
   }

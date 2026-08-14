@@ -1,5 +1,6 @@
 import { CLASSIC, SIMPLE, type SimpleBody } from "../catalog";
 import type { PhaseCtx } from "../ctx";
+import { classifyError } from "../gaps";
 
 function resolveBody(body: SimpleBody, ctx: PhaseCtx): Record<string, unknown> {
   if (body === "NONCE") return { PageNonce: ctx.nonce };
@@ -13,11 +14,11 @@ export async function structured(ctx: PhaseCtx): Promise<void> {
   ctx.log("\n== structured: single-call domains ==");
   for (const { domain, path, body } of SIMPLE) {
     if (ctx.signal.aborted) return;
+    // Name from the part after "api/" when present, else the whole path —
+    // so non-api endpoints (e.g. Community/…, Authentication/…) work too.
+    const rel = path.includes("api/") ? path.split("api/")[1]! : path;
     try {
       const r = await ctx.mc.api(path, resolveBody(body, ctx));
-      // Name from the part after "api/" when present, else the whole path —
-      // so non-api endpoints (e.g. Community/…, Authentication/…) work too.
-      const rel = path.includes("api/") ? path.split("api/")[1]! : path;
       const name = rel.replace(/\//g, "__");
       await ctx.store.saveJson(
         `structured/${domain}/${name}.json`,
@@ -26,6 +27,7 @@ export async function structured(ctx: PhaseCtx): Promise<void> {
       ctx.rec(domain, rel, r);
     } catch (e) {
       ctx.log(`  ERR ${path} ${e}`);
+      ctx.rec(domain, rel, null, String(e).slice(0, 200), { outcome: classifyError(e) });
     }
   }
   ctx.log("== structured: classic (form/get) domains ==");
@@ -49,6 +51,7 @@ export async function structured(ctx: PhaseCtx): Promise<void> {
       }
     } catch (e) {
       ctx.log(`  ERR ${path} ${e}`);
+      ctx.rec(domain, path, null, String(e).slice(0, 200), { outcome: classifyError(e) });
     }
   }
 }

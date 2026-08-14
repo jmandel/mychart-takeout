@@ -108,7 +108,7 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
   if (o.doSalvage && o.active.has("salvage")) salvage(outDir, session.origin);
 
   await ctx.store.saveJson("_manifest.json", ctx.manifest);
-  const gaps = summarizeGaps(ctx.manifest);
+  const gaps = summarizeGaps(ctx.manifest, ctx.signal.aborted ? ctx.signal.reason : undefined);
   await ctx.store.saveJson("gaps.json", gaps);
   await ctx.store.saveText("GAPS.md", renderGapsMd(gaps));
   console.log(

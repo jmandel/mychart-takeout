@@ -46,7 +46,16 @@ export class CdpClient implements MyChartClient {
       };
       if (a.init.method) opt.method = a.init.method;
       if (a.init.body !== undefined && a.init.body !== null) opt.body = a.init.body;
-      const r = await fetch(a.url, opt);
+      if (a.init.timeoutMs) opt.signal = AbortSignal.timeout(a.init.timeoutMs);
+      let r;
+      try {
+        r = await fetch(a.url, opt);
+      } catch (e) {
+        const kind = e && (e.name === "TimeoutError" || e.name === "AbortError")
+          ? "timeout after " + a.init.timeoutMs + "ms"
+          : "network-error";
+        throw new Error(kind + ": " + a.url);
+      }
       const text = await r.text();
       const hs = {};
       r.headers.forEach((v, k) => (hs[k] = v));
@@ -72,7 +81,16 @@ export class CdpClient implements MyChartClient {
       const opt = { credentials: "include", headers: Object.assign({}, a.init.headers || {}) };
       if (a.init.method) opt.method = a.init.method;
       if (a.init.body !== undefined && a.init.body !== null) opt.body = a.init.body;
-      const r = await fetch(a.url, opt);
+      if (a.init.timeoutMs) opt.signal = AbortSignal.timeout(a.init.timeoutMs);
+      let r;
+      try {
+        r = await fetch(a.url, opt);
+      } catch (e) {
+        const kind = e && (e.name === "TimeoutError" || e.name === "AbortError")
+          ? "timeout after " + a.init.timeoutMs + "ms"
+          : "network-error";
+        throw new Error(kind + ": " + a.url);
+      }
       const b = new Uint8Array(await r.arrayBuffer());
       let s = "";
       const CH = 0x8000;

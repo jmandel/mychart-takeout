@@ -24,6 +24,12 @@ export interface FetchInit {
   headers?: Record<string, string>;
   /** Pre-serialized body. JSON serialization happens in Mc, not here. */
   body?: string;
+  /**
+   * Per-request time budget. Transports abort the request past it and throw an
+   * error whose message starts with "timeout" — one hung endpoint must not
+   * stall the whole run (Mc turns these into breaker strikes, not crashes).
+   */
+  timeoutMs?: number;
 }
 
 /**
