@@ -1,6 +1,7 @@
 import { classifyOutcome } from "@mychart/core";
 import { candidatePrefixes, discoverPrefixes, pageToken, resolveMyChart } from "./detect";
 import { formatJournal, likelyCulprit, priorCrashedRun } from "./journal";
+import { capturedRequests } from "./netcapture";
 
 /**
  * A debug report for when detection fails on someone's MyChart, meant to be
@@ -240,6 +241,10 @@ export async function collectDebugReport(): Promise<string> {
     })(),
     csrfProbes: probes,
     dataProbes, // live calls to real endpoints (status/outcome/field-names only)
+    // How the APP authenticates its own API calls vs how ours fail: the
+    // successful ones (status 200, loggedOut:false) are the app's — compare
+    // their headerNames/hasAuthorization to ours. Header NAMES only, no values.
+    observedApiRequests: capturedRequests(),
     signals: {
       requestVerificationTokenInputsOnPage: tokenInputsOnPage,
       epicGlobals,

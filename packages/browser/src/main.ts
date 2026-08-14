@@ -10,7 +10,8 @@
 import { buildReport, makeCtx, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
 import { BrowserClient, derivePrefix } from "./client";
 import { collectDebugReport } from "./debug";
-import { resolveMyChart } from "./detect";
+import { pageToken, resolveMyChart } from "./detect";
+import { installNetCapture } from "./netcapture";
 import { FetchDom } from "./fetchDom";
 import { exportFilename } from "./filename";
 import {
@@ -131,6 +132,10 @@ declare global {
   var __mychartExport: { run(opts?: RunOpts): Promise<Uint8Array> } | undefined;
 }
 
+// Patch fetch/XHR as early as possible so we can observe how the app itself
+// authenticates its API calls (for the "app works, our fetches don't" case).
+installNetCapture();
+
 globalThis.__mychartExport = { run };
 
 // Interactive path: show the overlay, but only reveal Start once we've
@@ -173,9 +178,16 @@ if (crashed) {
 void (async () => {
   const resolved = await resolveMyChart();
   if (!resolved) {
+    // A token in the page but no working session = this IS MyChart, but our
+    // requests aren't authenticating (they redirect to login) even though the
+    // user appears signed in — a different problem than "wrong page".
+    const looksLikeMyChart = pageToken() !== null;
     overlay.setError(
-      `This isn't a signed-in MyChart page (${location.host}).\n` +
-        "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",
+      looksLikeMyChart
+        ? "This looks like MyChart, but our requests aren't authenticating — every call redirected to login even though you appear signed in.\n" +
+            "Click any menu item in MyChart to make it load data, then click Debug — it captures how the app authenticates so we can match it."
+        : `This isn't a signed-in MyChart page (${location.host}).\n` +
+            "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",
     );
   } else {
     overlay.log(`Detected MyChart at ${resolved.origin}${resolved.prefix}.`);

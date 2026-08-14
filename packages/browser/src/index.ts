@@ -1,6 +1,7 @@
 export * from "./filename";
 export * from "./detect";
 export * from "./journal";
+export * from "./netcapture";
 export * from "./debug";
 /**
  * Public surface for tests/tooling. NOTE: main.ts (the bundle entry) is
