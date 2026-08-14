@@ -1,4 +1,5 @@
 import type { PhaseCtx } from "../ctx";
+import { DetailLoopGuard, topKeys } from "../heal";
 import { isRecord, pad2, slug } from "../util";
 
 /**
@@ -57,8 +58,8 @@ export async function testResults(ctx: PhaseCtx): Promise<void> {
   });
   if (r.json != null) {
     await ctx.store.saveJson("structured/test-results/GetList.json", r.json);
-    ctx.rec("test-results", "GetList", r);
   }
+  ctx.rec("test-results", "GetList", r); // always — a failed list must show up in gaps
   // Prefer keys straight from the list payload — no page load, works in every
   // mode. Fall back to the rendered page only if the payload yielded nothing.
   let eids = eorderidsFromList(r.json);
@@ -70,10 +71,34 @@ export async function testResults(ctx: PhaseCtx): Promise<void> {
   await ctx.store.saveJson("structured/test-results/_detail_links.json", eids);
   ctx.log(`  detail links: ${eids.length} (from ${source})`);
   if (eids.length === 0) {
-    ctx.rec("test-results", "GetDetails", null, "no eorderids found (list + dom empty)");
+    // Distinguish "the list answered but its shape hid the keys" (an exporter
+    // gap worth reporting upstream) from "the list itself failed".
+    const answered = isRecord(r.json) && Object.keys(r.json).length > 0;
+    ctx.rec(
+      "test-results",
+      "GetDetails",
+      null,
+      answered
+        ? `no eorderids in GetList payload (top keys: ${topKeys(r.json)}); dom fallback empty`
+        : "no eorderids found (list + dom empty)",
+      answered ? { outcome: "shape-mismatch" } : {},
+    );
     return;
   }
+  const guard = new DetailLoopGuard();
+  let saved = 0;
   for (let i = 0; i < eids.length; i++) {
+    if (ctx.signal.aborted) break;
+    if (guard.abandoned()) {
+      ctx.rec(
+        "test-results",
+        "GetDetails",
+        null,
+        `abandoned after early consecutive failures; skipped remaining ${eids.length - i} orders`,
+        { outcome: "skipped" },
+      );
+      break;
+    }
     const eid = eids[i]!;
     try {
       const d = await ctx.mc.api("api/test-results/GetDetails", {
@@ -100,10 +125,15 @@ export async function testResults(ctx: PhaseCtx): Promise<void> {
           eorderid: eid,
           detail,
         });
+        saved++;
+        guard.ok();
+      } else {
+        guard.fail();
       }
     } catch (e) {
+      guard.fail();
       ctx.log(`   detail err ${e}`);
     }
   }
-  ctx.rec("test-results", "GetDetails", { status: 200, body: "" }, `${eids.length} orders`);
+  ctx.rec("test-results", "GetDetails", { status: 200, body: "" }, `${saved}/${eids.length} orders`);
 }

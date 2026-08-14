@@ -1,6 +1,7 @@
 import { CLASSIC, SIMPLE, type SimpleBody } from "../catalog";
 import type { PhaseCtx } from "../ctx";
-import { classifyError } from "../gaps";
+import { classifyError, classifyOutcome } from "../gaps";
+import { findObservedAlternative } from "../heal";
 
 function resolveBody(body: SimpleBody, ctx: PhaseCtx): Record<string, unknown> {
   if (body === "NONCE") return { PageNonce: ctx.nonce };
@@ -18,13 +19,27 @@ export async function structured(ctx: PhaseCtx): Promise<void> {
     // so non-api endpoints (e.g. Community/…, Authentication/…) work too.
     const rel = path.includes("api/") ? path.split("api/")[1]! : path;
     try {
-      const r = await ctx.mc.api(path, resolveBody(body, ctx));
+      let r = await ctx.mc.api(path, resolveBody(body, ctx));
+      let note = "";
+      // Endpoint moved? If the app's own observed traffic knows this Method at
+      // a different base, retry there ONCE and record the substitution.
+      const oc = classifyOutcome(r);
+      if ((oc === "not-found" || oc === "spa-shell") && ctx.observedApiPaths && !ctx.signal.aborted) {
+        const alt = findObservedAlternative(path, ctx.client.prefix, ctx.observedApiPaths());
+        if (alt) {
+          const r2 = await ctx.mc.api(alt, resolveBody(body, ctx));
+          if (r2.json != null) {
+            r = r2;
+            note = `substituted-path: ${alt}`;
+          }
+        }
+      }
       const name = rel.replace(/\//g, "__");
       await ctx.store.saveJson(
         `structured/${domain}/${name}.json`,
         r.json != null ? r.json : { _raw: r.body },
       );
-      ctx.rec(domain, rel, r);
+      ctx.rec(domain, rel, r, note);
     } catch (e) {
       ctx.log(`  ERR ${path} ${e}`);
       ctx.rec(domain, rel, null, String(e).slice(0, 200), { outcome: classifyError(e) });

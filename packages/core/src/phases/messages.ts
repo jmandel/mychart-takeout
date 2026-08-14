@@ -1,4 +1,5 @@
 import type { PhaseCtx } from "../ctx";
+import { DetailLoopGuard, topKeys } from "../heal";
 import { isRecord, pad3, slug } from "../util";
 
 interface ConvMeta {
@@ -29,8 +30,19 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
       PageNonce: ctx.nonce,
     });
     const j = r.json;
-    if (j == null) continue;
+    if (j == null) {
+      ctx.rec("messages", `GetConversationList[tag${tag}]`, r); // failed list → gaps
+      continue;
+    }
     await ctx.store.saveJson(`structured/messages/list_tag${tag}.json`, j);
+    // A present-but-differently-shaped payload (no `conversations` array at
+    // all) is an exporter gap, not "no messages" — say so.
+    if (isRecord(j) && Object.keys(j).length > 0 && !Array.isArray(j.conversations)) {
+      ctx.rec("messages", `GetConversationList[tag${tag}]`, r, `no conversations array (top keys: ${topKeys(j)})`, {
+        outcome: "shape-mismatch",
+      });
+      continue;
+    }
     const convs = isRecord(j) && Array.isArray(j.conversations) ? j.conversations : [];
     for (const c of convs) {
       if (!isRecord(c)) continue;
@@ -50,7 +62,19 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
   }
   const index: Record<string, unknown>[] = [];
   const entries = [...conv.entries()];
+  const guard = new DetailLoopGuard();
   for (let i = 0; i < entries.length; i++) {
+    if (ctx.signal.aborted) break;
+    if (guard.abandoned()) {
+      ctx.rec(
+        "messages",
+        "GetConversationDetails",
+        null,
+        `abandoned after early consecutive failures; skipped remaining ${entries.length - i} threads`,
+        { outcome: "skipped" },
+      );
+      break;
+    }
     const [h, meta] = entries[i]!;
     try {
       const r = await ctx.mc.api("api/conversations/GetConversationDetails", {
@@ -61,9 +85,11 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
       });
       const j = r.json;
       if (j == null) {
+        guard.fail();
         index.push({ ...meta, full_msgs: null });
         continue;
       }
+      guard.ok();
       const name = `${pad3(i)}_${slug(meta.subject)}`;
       await ctx.store.saveJson(`structured/messages/threads_full/${name}.json`, {
         meta,
@@ -89,6 +115,7 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
       }
       index.push({ ...meta, full_msgs: msgs.length });
     } catch (e) {
+      guard.fail();
       index.push({ ...meta, error: String(e) });
     }
   }

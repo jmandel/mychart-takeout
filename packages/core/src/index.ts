@@ -6,5 +6,6 @@ export * from "./ctx";
 export * from "./catalog";
 export * from "./exportSkill";
 export * from "./gaps";
+export * from "./heal";
 export * from "./phases/index";
 export * from "./report/index";

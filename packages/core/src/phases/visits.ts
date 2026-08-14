@@ -1,4 +1,5 @@
 import type { PhaseCtx } from "../ctx";
+import { DetailLoopGuard, topKeys } from "../heal";
 import { anyTrueDeep, collectStrings, isRecord, pad2 } from "../util";
 import { pyTruthy } from "./common";
 
@@ -61,6 +62,13 @@ export async function visits(ctx: PhaseCtx): Promise<void> {
     const nxt = isRecord(j) && typeof j.SerializedIndex === "string" ? j.SerializedIndex : "";
     // HasMoreData is a bool nested per-org; detect any true
     const more = anyTrueDeep(j, "hasmoredata");
+    if (more && !nxt) {
+      // The instance says there's more but the pagination cursor field we know
+      // is missing — record the truncation instead of silently stopping.
+      ctx.rec("visits", "LoadPast[cursor]", null, `hasMoreData true but no SerializedIndex (top keys: ${topKeys(j)})`, {
+        outcome: "shape-mismatch",
+      });
+    }
     if (!more || !nxt || nxt === sidx || page > 60) break;
     sidx = nxt;
   }
@@ -75,7 +83,19 @@ export async function visits(ctx: PhaseCtx): Promise<void> {
   }
   await ctx.store.saveJson("structured/visits/_all_csns.json", csns);
   const index: Record<string, unknown>[] = [];
+  const guard = new DetailLoopGuard();
   for (let i = 0; i < csns.length; i++) {
+    if (ctx.signal.aborted) break;
+    if (guard.abandoned()) {
+      ctx.rec(
+        "visits",
+        "AVS+notes",
+        null,
+        `abandoned after early consecutive failures; skipped remaining ${csns.length - i} encounters`,
+        { outcome: "skipped" },
+      );
+      break;
+    }
     const csn = csns[i]!;
     const m = meta[csn] ?? {};
     const label = `${m.date ?? "?"} ${m.type ?? ""} ${m.provider ?? ""}`.trim();
@@ -143,6 +163,10 @@ export async function visits(ctx: PhaseCtx): Promise<void> {
     } catch (ex) {
       e.notes_err = String(ex);
     }
+    // An encounter counts as failed only when BOTH its AVS and its notes call
+    // threw — AVS-less encounters (e.g. old visits) are normal.
+    if (e.avs_err && e.notes_err) guard.fail();
+    else guard.ok();
     index.push(e);
     ctx.log(
       `  [${pad2(i)}] ${label.slice(0, 44).padEnd(44)} AVS=${String(e.avs_bytes).padStart(6)}b notes=${e.notes}`,

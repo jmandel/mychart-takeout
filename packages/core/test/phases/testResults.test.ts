@@ -44,7 +44,7 @@ describe("testResults phase", () => {
     // empty results[] → falls back to orderName
     expect(sink.has("structured/test-results/details/01_Chest_X_Ray.json")).toBe(true);
     const final = ctx.manifest.find((m) => m.endpoint === "GetDetails");
-    expect(final?.note).toBe("2 orders");
+    expect(final?.note).toBe("2/2 orders");
   });
 
   test("derives eorderids from newResultGroups[].key without any dom access", async () => {
@@ -73,16 +73,19 @@ describe("testResults phase", () => {
     // GetList keys mean the SPA page is never fetched
     expect(c.calls.some((x) => x.url.includes("app/test-results"))).toBe(false);
     const final = ctx.manifest.find((m) => m.endpoint === "GetDetails");
-    expect(final?.note).toBe("2 orders");
+    expect(final?.note).toBe("2/2 orders");
   });
 
-  test("no list keys and no dom records an empty gap", async () => {
+  test("list answered but keys unfindable → shape-mismatch gap naming the top keys", async () => {
     const c = clientWithDetails(); // GETLIST has no newResultGroups
     const { ctx, sink } = makeTestCtx(c); // no dom
     await phases.testResults(ctx);
     expect(sink.json("structured/test-results/_detail_links.json")).toEqual([]);
     const gap = ctx.manifest.find((m) => m.endpoint === "GetDetails");
-    expect(gap?.note).toBe("no eorderids found (list + dom empty)");
+    // The list DID answer ({orders:[...]}) — that's an exporter shape gap, not
+    // "patient has no results"; the note names the keys so it's diagnosable.
+    expect(gap?.outcome).toBe("shape-mismatch");
+    expect(gap?.note).toContain("top keys: orders");
     expect(gap?.status).toBeNull();
   });
 
