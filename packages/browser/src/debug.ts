@@ -1,3 +1,4 @@
+import { classifyOutcome } from "@mychart/core";
 import { candidatePrefixes, discoverPrefixes, pageToken, resolveMyChart } from "./detect";
 
 /**
@@ -86,6 +87,60 @@ async function probe(prefix: string): Promise<Probe> {
   }
 }
 
+/**
+ * Actually call a few DATA endpoints with the resolved token and report the
+ * outcome + field NAMES (never values). This is what distinguishes "ran but
+ * empty" (calls fail: spa-shell/forbidden/http-error) from "genuinely no data"
+ * (ok/empty). PHI-safe: no field values, no content.
+ */
+async function dataProbe(
+  origin: string,
+  prefix: string,
+  token: string,
+  path: string,
+): Promise<Record<string, unknown>> {
+  try {
+    const r = await fetch(`${origin}${prefix}/${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        __RequestVerificationToken: token,
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        Accept: "application/json",
+      },
+      body: "{}",
+    });
+    const text = await r.text();
+    let json: unknown;
+    let topKeys: string[] = [];
+    try {
+      json = JSON.parse(text);
+      if (json && typeof json === "object" && !Array.isArray(json)) {
+        topKeys = Object.keys(json as Record<string, unknown>).slice(0, 15);
+      }
+    } catch {
+      /* not json */
+    }
+    return {
+      path,
+      status: r.status,
+      contentType: (r.headers.get("content-type") || "").split(";")[0],
+      bodyLength: text.length,
+      outcome: classifyOutcome({
+        status: r.status,
+        url: r.url,
+        contentType: r.headers.get("content-type"),
+        body: text,
+        json,
+      }),
+      topKeys, // field NAMES only
+    };
+  } catch (e) {
+    return { path, error: String(e) };
+  }
+}
+
 /** Build the report as pretty JSON text (ready to copy or download). */
 export async function collectDebugReport(): Promise<string> {
   const inIframe = (() => {
@@ -124,6 +179,20 @@ export async function collectDebugReport(): Promise<string> {
   const probes: Probe[] = [];
   for (const p of candidates.slice(0, 10)) probes.push(await probe(p));
 
+  // If we can resolve a token, actually try the data endpoints — this is what
+  // tells us "ran but empty" from a working export.
+  const resolved = await resolveMyChart().catch(() => null);
+  const dataProbes: Record<string, unknown>[] = [];
+  if (resolved) {
+    for (const path of [
+      "api/health-summary/FetchHealthSummary",
+      "api/allergies/LoadAllergies",
+      "api/personalInformation/GetContactInformation",
+    ]) {
+      dataProbes.push(await dataProbe(resolved.origin, resolved.prefix, resolved.token, path));
+    }
+  }
+
   const epicGlobals = (() => {
     try {
       return Object.keys(window)
@@ -158,9 +227,10 @@ export async function collectDebugReport(): Promise<string> {
       domDiscoveredPrefixes: discoverPrefixes(),
       candidatePrefixesTried: candidates,
       pageTokenFound: pageToken() !== null, // newer Epic: token embedded in page
-      resolved: await resolveMyChart().then((r) => (r ? { prefix: r.prefix } : null)).catch(() => null),
+      resolved: resolved ? { prefix: resolved.prefix } : null,
     },
     csrfProbes: probes,
+    dataProbes, // live calls to real endpoints (status/outcome/field-names only)
     signals: {
       requestVerificationTokenInputsOnPage: tokenInputsOnPage,
       epicGlobals,
