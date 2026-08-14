@@ -8,14 +8,17 @@
  * renders in-page. Screenshots are likewise CDP-only.
  */
 import { buildReport, makeCtx, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
+import { BUILD } from "./buildInfo";
 import { BrowserClient, derivePrefix } from "./client";
 import { collectDebugReport } from "./debug";
-import { pageToken, resolveMyChart } from "./detect";
-import { installNetCapture } from "./netcapture";
+import { cookiesAreLive, ladderTranscript, pageToken, preflightMyChart, resolveMyChart, resolvedMyChart } from "./detect";
+import { capturedRequests, installNetCapture, observedApiPaths, resourceApiEntries } from "./netcapture";
 import { FetchDom } from "./fetchDom";
 import { exportFilename } from "./filename";
 import {
+  currentJournal,
   finish,
+  formatJournal,
   likelyCulprit,
   markExportStarted,
   priorCrashedRun,
@@ -47,9 +50,24 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   // Resolve WHERE MyChart is (correct path prefix) and confirm we're signed in,
   // by probing candidate prefixes for a real CSRF token. Failing here reports
   // clearly instead of producing a fake "Done" with an empty download.
+  // A retry after a completed run reuses the memoized resolution; a session
+  // that idled out since must not receive its first POST blind — one cheap GET
+  // re-check catches that. (A fresh resolution does its own liveness GET.)
+  if (resolvedMyChart() && !(await cookiesAreLive())) {
+    const msg =
+      "You've been signed out of MyChart since this page loaded.\nSign in again in this tab, then click Start export.";
+    log(`!! ${msg.replace(/\n/g, " ")}`);
+    overlay.setError(msg);
+    throw new Error(msg);
+  }
+  // First Start click runs the full verify ladder (page load only did GETs).
   const resolved = await resolveMyChart();
   if (!resolved) {
-    const msg = `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.`;
+    const msg = pageToken()
+      ? "This looks like MyChart, but none of our credential candidates authenticated — every verification bounced to login.\n" +
+        "If MyChart now shows you signed out, that was its anti-CSRF defense reacting to our attempt. Sign in again, " +
+        "click any MyChart menu item, then click Debug and share the report privately with Josh."
+      : `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.`;
     log(`!! ${msg.replace(/\n/g, " ")}`);
     overlay.setError(msg);
     throw new Error(msg);
@@ -64,9 +82,16 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     dom: new FetchDom(origin, prefix),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     log,
+    // The ladder already verified this token with a real API call — seed it so
+    // the run never refetches an unverified one from a different source.
+    initialToken: resolved.token,
+    // Hard wall-clock backstop: slow-but-not-timing-out instances must not
+    // grind for hours; past this, remaining calls record as skipped.
+    runBudgetMs: 15 * 60_000,
+    observedApiPaths,
   });
 
-  log(`Exporting from ${origin}${prefix} …`);
+  log(`Exporting from ${origin}${prefix} (token via ${resolved.source}, build ${BUILD}) …`);
   markExportStarted();
   const order: (keyof typeof phases)[] = [
     "structured",
@@ -79,18 +104,22 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     ...(opts.ccda ? (["ccda"] as const) : []),
     ...(opts.dom !== false ? (["dom"] as const) : []),
   ];
+  const phaseTimings: { phase: string; ms: number; abortedDuring: boolean }[] = [];
   for (const name of order) {
     if (ctx.signal.aborted) break; // logged out mid-run — stop, don't save shells
+    const t0 = Date.now();
     try {
       await phases[name](ctx);
     } catch (e) {
       // Browser mode keeps going: one broken phase shouldn't lose the rest.
       ctx.log(`!! phase ${name} failed: ${e}`);
       ctx.rec("phase-error", name, null, String(e));
+    } finally {
+      phaseTimings.push({ phase: name, ms: Date.now() - t0, abortedDuring: ctx.signal.aborted });
     }
   }
   await ctx.store.saveJson("_manifest.json", ctx.manifest);
-  const gaps = summarizeGaps(ctx.manifest);
+  const gaps = summarizeGaps(ctx.manifest, ctx.signal.aborted ? ctx.signal.reason : undefined);
   await ctx.store.saveJson("gaps.json", gaps);
   await ctx.store.saveText("GAPS.md", renderGapsMd(gaps));
   log(`gaps: ${gaps.ok}/${gaps.attempted} ok, ${gaps.empty} empty, ${gaps.concerns.length} need attention`);
@@ -109,13 +138,38 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     hs && typeof hs === "object" && typeof (hs as { patientFirstName?: unknown }).patientFirstName === "string"
       ? (hs as { patientFirstName: string }).patientFirstName
       : undefined;
+  // Every zip carries its own evidence: a failed or empty export IS the debug
+  // bundle — one artifact to send, no separate report-collection step.
+  try {
+    const j = currentJournal();
+    await ctx.store.saveText("_diagnostics/journal.txt", j ? formatJournal(j) : "(no journal)");
+    await ctx.store.saveJson("_diagnostics/run.json", {
+      build: BUILD,
+      page: { host: location.host, prefix },
+      tokenSource: resolved.source,
+      detectionLadder: ladderTranscript(),
+      phaseTimings,
+      stoppedEarly: ctx.signal.aborted ? ctx.signal.reason : null,
+      observedApiRequests: capturedRequests(),
+      resourceTiming: resourceApiEntries(),
+    });
+  } catch (e) {
+    log(`!! diagnostics failed: ${e}`);
+  }
   const zip = sink.finalize();
   overlay.setDone(zip, exportFilename(location.host, patient));
   log(`Done: ${zip.length} bytes zipped${patient ? ` for ${patient}` : ""}.`);
   if (ctx.signal.aborted) {
-    log(`⚠ You were LOGGED OUT during the export (at: ${ctx.signal.reason}). Data is incomplete.`);
-    log("   Click Debug (below) and send the report privately to Josh.");
-    finish("logged-out", ctx.signal.reason);
+    const r = ctx.signal.reason;
+    if (/^circuit-open/.test(r)) {
+      log(`⚠ Export stopped early — repeated failures (${r}). Data is incomplete.`);
+    } else if (r === "run-deadline") {
+      log("⚠ Export stopped early — it hit its time budget. Data is incomplete.");
+    } else {
+      log(`⚠ You were LOGGED OUT during the export (at: ${r}). Data is incomplete.`);
+    }
+    log("   The zip includes _diagnostics/ — send it (or a Debug report) privately to Josh.");
+    finish(/^circuit-open|^run-deadline/.test(r) ? "error" : "logged-out", r);
   } else if (!patient) {
     // "Ran but empty" looks like success — surface it and point at Debug.
     log("⚠ No patient data was found — this export looks EMPTY.");
@@ -175,22 +229,24 @@ if (crashed) {
   overlay.log("   Click Debug to capture what happened (and Start to try again).");
 }
 
+// GET-only preflight: show Start when this looks like a signed-in MyChart
+// page, without sending a single POST. Verification — the part that can trip
+// Epic's anti-CSRF session kill — waits for the user's explicit Start click,
+// so merely loading the bookmarklet can never sign anyone out.
 void (async () => {
-  const resolved = await resolveMyChart();
-  if (!resolved) {
-    // A token in the page but no working session = this IS MyChart, but our
-    // requests aren't authenticating (they redirect to login) even though the
-    // user appears signed in — a different problem than "wrong page".
-    const looksLikeMyChart = pageToken() !== null;
+  const state = await preflightMyChart();
+  if (state === "likely") {
+    overlay.log(`This looks like a signed-in MyChart page (${location.host}).`);
+    overlay.setReady();
+  } else if (state === "signed-out") {
     overlay.setError(
-      looksLikeMyChart
-        ? "This looks like MyChart, but our requests aren't authenticating — every call redirected to login even though you appear signed in.\n" +
-            "Click any menu item in MyChart to make it load data, then click Debug — it captures how the app authenticates so we can match it."
-        : `This isn't a signed-in MyChart page (${location.host}).\n` +
-            "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",
+      `You don't appear to be signed in to MyChart (${location.host}).\n` +
+        "Sign in, then run the bookmarklet again — or click Debug to make a report to share privately with Josh.",
     );
   } else {
-    overlay.log(`Detected MyChart at ${resolved.origin}${resolved.prefix}.`);
-    overlay.setReady();
+    overlay.setError(
+      `This doesn't look like a MyChart page (${location.host}).\n` +
+        "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",
+    );
   }
 })();

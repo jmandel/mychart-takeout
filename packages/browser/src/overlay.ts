@@ -1,4 +1,5 @@
 /** Minimal dependency-free progress overlay for the in-page exporter. */
+import { BUILD } from "./buildInfo";
 
 const OVERLAY_ID = "__mychart_export_overlay";
 
@@ -40,6 +41,13 @@ export function ensureOverlay(): Overlay {
   const titleText = document.createElement("span");
   titleText.textContent = "MyChart Export";
   title.appendChild(titleText);
+  // Build vintage, always visible — bookmarklets are frozen at install time,
+  // so "which build is this user actually running?" must answer itself.
+  const ver = document.createElement("span");
+  ver.textContent = BUILD;
+  ver.title = "Build (git SHA + build time). A remote user's bookmarklet keeps its install-time build.";
+  ver.style.cssText = "opacity:.55;font-weight:400;font-size:10px;margin-left:8px;flex:1;";
+  title.appendChild(ver); // lands between the title text and the ✕ (appended below)
   const closeBtn = document.createElement("button");
   closeBtn.textContent = "✕";
   closeBtn.title = "Close (does not cancel a download already saved)";

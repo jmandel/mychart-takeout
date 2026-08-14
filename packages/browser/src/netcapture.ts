@@ -49,6 +49,13 @@ export function installNetCapture(): void {
   if (installed) return;
   installed = true;
   try {
+    // Default buffer is small (250); a busy SPA overflows it and we lose the
+    // boot-time entries that resourceApiEntries() exists to recover.
+    performance.setResourceTimingBufferSize(1000);
+  } catch {
+    /* best-effort */
+  }
+  try {
     const origFetch = window.fetch.bind(window);
     const patchedFetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
       let url = "";
@@ -119,4 +126,52 @@ export function installNetCapture(): void {
 
 export function capturedRequests(): Captured[] {
   return captured.slice(-MAX);
+}
+
+export interface ResourceApiEntry {
+  path: string;
+  initiatorType: string;
+  /** HTTP status when the browser exposes it (newer Chrome). */
+  responseStatus?: number;
+  durationMs: number;
+}
+
+/**
+ * Same-origin API-ish requests from the PerformanceResourceTiming buffer.
+ * Crucially this includes traffic from BEFORE our script was injected (the
+ * app's own boot-time calls), which the fetch/XHR patch can never see — and
+ * it works even when the app captured a fetch reference before we patched.
+ */
+export function resourceApiEntries(): ResourceApiEntry[] {
+  try {
+    const out: ResourceApiEntry[] = [];
+    for (const e of performance.getEntriesByType("resource") as PerformanceResourceTiming[]) {
+      let u: URL;
+      try {
+        u = new URL(e.name);
+      } catch {
+        continue;
+      }
+      if (u.origin !== location.origin || !apiish(u.pathname)) continue;
+      out.push({
+        path: u.pathname,
+        initiatorType: e.initiatorType,
+        ...(typeof (e as { responseStatus?: number }).responseStatus === "number"
+          ? { responseStatus: (e as { responseStatus?: number }).responseStatus }
+          : {}),
+        durationMs: Math.round(e.duration),
+      });
+    }
+    return out.slice(-120);
+  } catch {
+    return [];
+  }
+}
+
+/** Union of app-observed API paths (patched traffic + timing buffer). */
+export function observedApiPaths(): string[] {
+  const set = new Set<string>();
+  for (const c of captured) set.add(c.path);
+  for (const r of resourceApiEntries()) set.add(r.path);
+  return [...set];
 }

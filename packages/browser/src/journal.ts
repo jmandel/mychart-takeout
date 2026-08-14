@@ -53,6 +53,11 @@ export function previousJournal(): Journal | null {
   return load();
 }
 
+/** The journal of THIS run (for baking into the export's diagnostics). */
+export function currentJournal(): Journal | null {
+  return cur;
+}
+
 /** The prior run captured at startRun, IF it looks like a crashed export. */
 export function priorCrashedRun(): Journal | null {
   return crashedRun(priorAtStart);

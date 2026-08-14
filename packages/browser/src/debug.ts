@@ -1,7 +1,8 @@
 import { classifyOutcome } from "@mychart/core";
-import { candidatePrefixes, discoverPrefixes, pageToken, resolveMyChart } from "./detect";
+import { BUILD } from "./buildInfo";
+import { candidatePrefixes, discoverPrefixes, ladderTranscript, pageToken, pxMarkers, resolvedMyChart } from "./detect";
 import { formatJournal, likelyCulprit, priorCrashedRun } from "./journal";
-import { capturedRequests } from "./netcapture";
+import { capturedRequests, resourceApiEntries } from "./netcapture";
 
 /**
  * A debug report for when detection fails on someone's MyChart, meant to be
@@ -181,9 +182,10 @@ export async function collectDebugReport(): Promise<string> {
   const probes: Probe[] = [];
   for (const p of candidates.slice(0, 10)) probes.push(await probe(p));
 
-  // If we can resolve a token, actually try the data endpoints — this is what
-  // tells us "ran but empty" from a working export.
-  const resolved = await resolveMyChart().catch(() => null);
+  // Only probe data endpoints with an ALREADY-VERIFIED resolution (set by a
+  // Start click). Debug itself never runs the verify ladder: an unverified
+  // token POST can kill a live session, and a diagnostic must not do harm.
+  const resolved = resolvedMyChart();
   const dataProbes: Record<string, unknown>[] = [];
   if (resolved) {
     for (const path of [
@@ -214,6 +216,7 @@ export async function collectDebugReport(): Promise<string> {
 
   const report = {
     tool: "mychart-takeout debug report",
+    build: BUILD, // bookmarklets freeze at install time — vintage matters
     note: "May include identifying details (your health system, cookie names). Review it, then share PRIVATELY with Josh — please don't post it publicly.",
     page: {
       origin: location.origin,
@@ -229,7 +232,11 @@ export async function collectDebugReport(): Promise<string> {
       domDiscoveredPrefixes: discoverPrefixes(),
       candidatePrefixesTried: candidates,
       pageTokenFound: pageToken() !== null, // newer Epic: token embedded in page
-      resolved: resolved ? { prefix: resolved.prefix } : null,
+      pxMarkersFound: pxMarkers(),
+      resolved: resolved ? { prefix: resolved.prefix, tokenSource: resolved.source } : null,
+      // The verify-before-trust decision tree: every (prefix, token-source)
+      // rung tried and how it ended. THIS is the first thing to read.
+      ladder: ladderTranscript(),
     },
     // A previous export in this tab that didn't finish (likely logged the user
     // out and reloaded the tab). Its last live request is the likely culprit.
@@ -244,7 +251,12 @@ export async function collectDebugReport(): Promise<string> {
     // How the APP authenticates its own API calls vs how ours fail: the
     // successful ones (status 200, loggedOut:false) are the app's — compare
     // their headerNames/hasAuthorization to ours. Header NAMES only, no values.
+    // (The Cookie header will never appear here — the browser attaches it.)
     observedApiRequests: capturedRequests(),
+    // API-ish traffic from the performance timing buffer — includes the app's
+    // BOOT-TIME calls (before our script existed) and survives the app having
+    // captured fetch before we patched it. Reveals the app's real API base.
+    resourceTiming: resourceApiEntries().map((r) => ({ ...r, path: redactPath(r.path) })),
     signals: {
       requestVerificationTokenInputsOnPage: tokenInputsOnPage,
       epicGlobals,

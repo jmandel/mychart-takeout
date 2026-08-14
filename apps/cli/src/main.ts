@@ -88,12 +88,16 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
     screenshots: o.screenshots,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
+  const phaseTimings: { phase: string; ms: number; abortedDuring: boolean }[] = [];
   const run = async (name: string, phase: Phase): Promise<void> => {
     if (!o.active.has(name) || ctx.signal.aborted) return;
+    const t0 = Date.now();
     try {
       await phase(ctx);
     } catch (e) {
       console.log(`  !! phase ${name} failed: ${e}`);
+    } finally {
+      phaseTimings.push({ phase: name, ms: Date.now() - t0, abortedDuring: ctx.signal.aborted });
     }
   };
   await run("structured", phases.structured);
@@ -111,6 +115,14 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
   const gaps = summarizeGaps(ctx.manifest, ctx.signal.aborted ? ctx.signal.reason : undefined);
   await ctx.store.saveJson("gaps.json", gaps);
   await ctx.store.saveText("GAPS.md", renderGapsMd(gaps));
+  // Same self-evidencing exports as the in-page path (see browser main.ts) —
+  // CDP mode additionally has raw_network/ for full forensics.
+  await ctx.store.saveJson("_diagnostics/run.json", {
+    build: "cli",
+    page: { host: o.host },
+    phaseTimings,
+    stoppedEarly: ctx.signal.aborted ? ctx.signal.reason : null,
+  });
   console.log(
     `  gaps: ${gaps.ok}/${gaps.attempted} ok, ${gaps.empty} empty, ${gaps.concerns.length} need attention`,
   );
