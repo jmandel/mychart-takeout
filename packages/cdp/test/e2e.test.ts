@@ -98,8 +98,7 @@ beforeAll(async () => {
   ctx = makeCtx({
     client: session.client(),
     sink: new FsSink(outDir),
-    dom: capSettle(session.domAccess(outDir), 100),
-    screenshots: false,
+    dom: capSettle(session.domAccess(), 100),
     timeZone: "UTC",
     log: () => {},
   });
@@ -111,7 +110,6 @@ beforeAll(async () => {
   await phases.messages(ctx);
   await phases.flowsheets(ctx);
   await phases.ccda(ctx);
-  await phases.dom(ctx);
   await snapshot(session.page, outDir, "final");
   salvage(outDir, session.origin);
   await ctx.store.saveJson("_manifest.json", ctx.manifest);
@@ -123,6 +121,7 @@ afterAll(async () => {
   proc?.kill();
   if (proc) await proc.exited;
   mock?.stop();
+  if (process.env.MCT_KEEP_E2E_OUT) { console.log("kept:", outDir); return; }
   for (const d of [profileDir, outDir]) {
     if (d) rmSync(d, { recursive: true, force: true });
   }
@@ -182,11 +181,6 @@ describe.skipIf(!CHROMIUM)("raw-CDP end-to-end export against mock MyChart", () 
     };
     walk(join(outDir, "documents/ccda/extracted"));
     expect(xmls.length).toBeGreaterThanOrEqual(2);
-  });
-
-  test("dom snapshots via real navigation", () => {
-    expect(existsSync(join(outDir, "dom/home.html"))).toBe(true);
-    expect(existsSync(join(outDir, "dom/test-results.txt"))).toBe(true);
   });
 
   test("snapshot(): html/txt/meta + real captureScreenshot png", () => {

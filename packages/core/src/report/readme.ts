@@ -35,8 +35,6 @@ export function renderReadme(S: Summary): string {
     "  visits/avs|notes/            After-Visit Summaries + clinical notes (HTML)",
     "  messages/threads_full/       per-thread JSON + per-message HTML bodies",
     "  _captured_from_navigation/   best JSON body per endpoint (provenance)",
-    "dom/                         per-page rendered HTML + text (if enabled)",
-    "screenshots/                 full-page PNGs (only if --screenshots)",
     "raw_network/                 raw response log + bodies (only if raw capture on)",
     "documents/ccda/              standards C-CDA export (only if --ccda)",
     "  HealthSummary_all_visits_CCDA.zip   IHE-XDM package",

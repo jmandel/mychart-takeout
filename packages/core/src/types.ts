@@ -76,16 +76,14 @@ export interface ManifestEntry {
 }
 
 /**
- * A rendered section page. CDP mode: real navigation in the attached tab.
- * Browser mode: hidden same-origin iframe. Core never sees the difference.
+ * A rendered app page, used for link harvesting (test-results eorderid
+ * fallback). CDP mode: real navigation in the attached tab.
  */
 export interface SectionPage {
   html(): Promise<string>;
   text(): Promise<string>;
   /** getAttribute('href') of every element matching a CSS selector. */
   hrefs(selector: string): Promise<(string | null)[]>;
-  /** Present only where screenshots are possible (CDP). */
-  screenshot?(relPath: string): Promise<void>;
 }
 
 export interface DomAccess {

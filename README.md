@@ -31,10 +31,10 @@ Two ways to reach that authenticated page:
 2. **In-browser mode (console paste / bookmarklet).** The same core logic
    compiled to a single self-contained script you paste into the DevTools
    console (or click as a bookmarklet) on an open MyChart tab. It collects
-   the same data with in-page `fetch()` (section pages load in hidden
-   same-origin iframes) and hands you the export as a downloadable ZIP. No
-   install, works on machines where you can't launch a debug browser. Loses
-   only the forensic layer (screenshots, passive network capture).
+   the same data with in-page `fetch()` and hands you the export as a
+   downloadable ZIP. No install, works on machines where you can't launch a
+   debug browser. Loses only the CDP-side forensic layer (passive network
+   capture).
 
 Both modes share one TypeScript codebase (`packages/core` is isomorphic —
 it runs in a Bun process *or* in the page, with transport and output sinks
@@ -62,10 +62,9 @@ bun run build:web                            # emits apps/web-build/dist/
 Re-run any time you're signed in; it always pulls fresh data. Output lands
 in the `--out` dir — start with its `PATIENT_SUMMARY.md` and `README.md`.
 
-`export` flags: `--out DIR` · `--ccda` (standards C-CDA) · `--screenshots`
-(PNGs, off by default) · `--no-dom` (skip page HTML/text snapshots) ·
+`export` flags: `--out DIR` · `--ccda` (standards C-CDA) ·
 `--no-raw` (don't keep raw bodies) · `--only PHASE` (one of: structured,
-test-results, visits, messages, flowsheets, access-log, documents, ccda, dom,
+test-results, visits, messages, flowsheets, access-log, documents, ccda,
 salvage, report).
 
 ## What it captures
@@ -94,8 +93,7 @@ salvage, report).
 - **Report layer** (derived, offline): `PATIENT_SUMMARY.md`/`.json`,
   flat CSV indexes (`indexes/*.csv`), `MANIFEST.json`, and a README inside
   the export explaining provenance.
-- **Forensics** (CDP mode): raw network log + response bodies, per-section
-  DOM HTML/text, optional full-page screenshots.
+- **Forensics** (CDP mode): raw network log + response bodies.
 
 ### Output layout (`export/`)
 
@@ -111,9 +109,6 @@ structured/                  structured JSON per domain (source of truth)
   messages/threads_full/       per-thread JSON + per-message HTML bodies
   _captured_from_navigation/   best JSON body per endpoint (provenance)
 documents/other/             downloaded document content (PDF/TIFF/HTML) + metadata
-dom/                         per-page rendered HTML + text (if enabled; pages
-                             that are only app-shell boilerplate are skipped)
-screenshots/                 full-page PNGs (only if --screenshots)
 raw_network/                 raw response log + bodies (only if raw capture on)
 documents/ccda/              standards C-CDA export (only if --ccda)
 ```
@@ -125,8 +120,8 @@ packages/core/         isomorphic exporter core: contracts, endpoint catalog,
                        phases, report builder (no fs/DOM/Bun imports — enforced)
 packages/cdp/          Bun-side driver: CDP session, in-page fetch bridge,
                        network logger, salvage, fs sink
-packages/browser/      in-page driver: page-fetch client, zip sink, iframe
-                       section loader, progress overlay
+packages/browser/      in-page driver: page-fetch client, zip sink, census,
+                       progress overlay
 apps/cli/              bun CLI: export/report + probe verbs (agent surface)
 apps/web-build/        builds dist/console.js + dist/bookmarklet.txt
 tools/mock-mychart/    synthetic-patient mock instance (CI target, no PHI)

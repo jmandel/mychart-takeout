@@ -44,10 +44,9 @@ export interface PhaseCtx {
   observedApiPaths?: () => string[];
   /** Documents the user chose to skip (census/selection flow) — by dcsID. */
   excludeDocIds?: ReadonlySet<string>;
-  /** Absent when the environment can't render pages; phases degrade + note it. */
+  /** Page access for link harvesting (test-results eorderid fallback).
+   *  Absent when the environment can't render pages; the fallback degrades. */
   dom?: DomAccess;
-  /** dom phase: also capture PNGs (CDP only). */
-  screenshots?: boolean;
 }
 
 export interface MakeCtxOpts {
@@ -56,7 +55,6 @@ export interface MakeCtxOpts {
   nonce?: string;
   timeZone?: string;
   dom?: DomAccess;
-  screenshots?: boolean;
   log?: (msg: string) => void;
   /** Detection-verified token to seed Mc with (skip an unverified refetch). */
   initialToken?: string | null;
@@ -105,6 +103,5 @@ export function makeCtx(opts: MakeCtxOpts): PhaseCtx {
     log,
     wait: (ms) => new Promise((r) => setTimeout(r, ms)),
     dom: opts.dom,
-    screenshots: opts.screenshots,
   };
 }

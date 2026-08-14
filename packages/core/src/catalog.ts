@@ -95,25 +95,3 @@ export const CLASSIC: ClassicEntry[] = [
   { domain: "questionnaires", path: "Questionnaire/MyChartQuestionnaire/GetQuestionnaireList", form: "filterDAT=&filterSeriesByDAT=false&filterCSN=&filterMessage=", kind: "form" },
 ];
 
-/** Section pages to snapshot (dom phase) — prefix-relative. */
-export const SECTIONS: [name: string, path: string][] = [
-  ["home", "Home"],
-  ["health-summary", "app/health-summary"],
-  ["test-results", "Clinical/TestResults"],
-  ["medications", "Clinical/Medications"],
-  ["medical-history", "MedicalHistory"],
-  ["visits", "Visits"],
-  ["documents", "Documents"],
-  ["messaging", "Messaging"],
-  ["preventive-care", "HealthAdvisories"],
-  ["upcoming-orders", "app/upcoming-orders"],
-  ["track-my-health", "TrackMyHealth"],
-  ["care-team", "Clinical/CareTeam"],
-  ["letters", "app/letters"],
-  ["advance-care", "AdvancedCarePlanning"],
-  ["questionnaires", "Questionnaires"],
-  ["covid-status", "CovidStatus"],
-  ["insurance", "Insurance"],
-  ["billing-summary", "Billing/Summary"],
-  ["personal-info", "app/personal-information"],
-];

@@ -15,7 +15,6 @@
  *        [--px] [--signed-out] [--alias /MyChart] [--kill-on-csrf-mismatch]
  *        [--stale-page-token] [--waf-challenge]
  */
-import { SECTIONS } from "@mychart/core";
 import {
   CSRF_PAGE,
   CSRF_TOKEN,
@@ -251,10 +250,6 @@ export function startMockMyChart(opts: MockOpts = {}): MockServer {
           headers: { "content-type": "application/zip" },
         });
       }
-
-      // ---- section pages (dom phase iframes)
-      const section = SECTIONS.find(([, p]) => p === path);
-      if (section && req.method === "GET") return page(sectionPage(section[0]));
 
       // ---- everything below requires the CSRF header (verifies Mc wiring)
       if (isPost && token !== "good") {

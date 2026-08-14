@@ -97,13 +97,27 @@ export class Mc {
     return `${this.client.prefix}/${path}`;
   }
 
+  /** GET the CSRFToken page with one cheap retry — a transient failure here
+   *  would otherwise sink the whole first call of the run (observed in CI as
+   *  a network-error on the very first endpoint, losing patient identity). */
+  private async fetchTokenPage(): Promise<McResponse> {
+    const init: FetchInit = {
+      method: "GET",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+      timeoutMs: REQUEST_TIMEOUT_MS,
+    };
+    const path = `${this.client.prefix}/Home/CSRFToken`;
+    try {
+      return await this.client.fetchText(path, init);
+    } catch {
+      return this.client.fetchText(path, { ...init, timeoutMs: RETRY_TIMEOUT_MS });
+    }
+  }
+
   async token(refresh = false): Promise<string | null> {
     if (this.tok && !refresh) return this.tok;
     // 1) The endpoint that older Epic serves as an HTML hidden input.
-    const r = await this.client.fetchText(`${this.client.prefix}/Home/CSRFToken`, {
-      method: "GET",
-      headers: { "X-Requested-With": "XMLHttpRequest" },
-    });
+    const r = await this.fetchTokenPage();
     // A logged-out session redirects (or rewrites) this to the login page,
     // whose HTML also has a __RequestVerificationToken — never adopt that.
     let tok = isLoggedOutUrl(r.url) || looksLikeLoginPage(r.body) ? null : parseCsrfToken(r.body);

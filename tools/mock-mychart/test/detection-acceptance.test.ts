@@ -159,7 +159,7 @@ describe.skipIf(!CHROMIUM)("detection acceptance: hostile MyChart instances", ()
         // which carries a __RequestVerificationToken input. It must not be used.
         expect(page.url()).toContain("/Authentication/Login");
 
-        const { error } = await runExport(page, { ccda: false, dom: false });
+        const { error } = await runExport(page, { ccda: false });
         expect(error).toMatch(/signed-in MyChart page|not signed in|signed out/i);
         expect(mock.stats().apiPosts).toBe(0);
         expect(mock.stats().badTokenApiPosts).toBe(0);
@@ -178,7 +178,7 @@ describe.skipIf(!CHROMIUM)("detection acceptance: hostile MyChart instances", ()
         // a POST is never the right way to ask.
         const page = await openWithBundle(mock, "/MyChart/Home", () => mock.signOut("session timeout"));
 
-        const { error } = await runExport(page, { ccda: false, dom: false });
+        const { error } = await runExport(page, { ccda: false });
         expect(error).toMatch(/signed-in MyChart page|not signed in|signed out|authenticat/i);
         expect(mock.stats().apiPosts).toBe(0);
         await page.close();
@@ -195,7 +195,7 @@ describe.skipIf(!CHROMIUM)("detection acceptance: hostile MyChart instances", ()
         // why the field user kept getting "automatically signed out". One
         // unverified attempt is forgivable. Two is the bug.
         const page = await openWithBundle(mock, "/MyChart/Home");
-        const { error, files } = await runExport(page, { ccda: false, dom: false });
+        const { error, files } = await runExport(page, { ccda: false });
 
         const stats = mock.stats();
         expect(stats.badTokenApiPosts).toBeLessThanOrEqual(1);
@@ -247,7 +247,7 @@ describe.skipIf(!CHROMIUM)("detection acceptance: hostile MyChart instances", ()
         // walking the whole catalog into an edge challenge is how you get the
         // user's IP blocked.
         const page = await openWithBundle(mock, "/MyChart/Home");
-        const { error } = await runExport(page, { ccda: false, dom: false });
+        const { error } = await runExport(page, { ccda: false });
 
         expect(error).not.toBe("");
         expect(mock.stats().apiPosts).toBeLessThanOrEqual(3);

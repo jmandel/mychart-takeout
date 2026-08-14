@@ -40,6 +40,30 @@ describe("Mc logout signal", () => {
   });
 });
 
+describe("Mc token fetch retry", () => {
+  test("one transient failure on the CSRFToken GET does not sink the call", async () => {
+    let tokenTries = 0;
+    const client: MyChartClient = {
+      origin: "https://h",
+      prefix: "/MyChart",
+      async fetchText(url: string): Promise<McResponse> {
+        if (url.endsWith("/Home/CSRFToken")) {
+          if (++tokenTries === 1) throw new Error("network-error: transient");
+          return { status: 200, contentType: "text/html", url, body: '<input name="__RequestVerificationToken" value="tok"/>' };
+        }
+        return { status: 200, contentType: "application/json", url, body: '{"ok":true}' };
+      },
+      async fetchBytes() {
+        return { status: 200, bytes: new Uint8Array() };
+      },
+    };
+    const mc = new Mc(client, { aborted: false, reason: "" });
+    const r = await mc.api("api/health-summary/FetchHealthSummary", {});
+    expect(r.json).toEqual({ ok: true });
+    expect(tokenTries).toBe(2);
+  });
+});
+
 describe("Mc rewrite-login rejection", () => {
   test("a login page served at the CSRFToken URL (200, no redirect) yields no token", async () => {
     const LOGIN_PAGE =

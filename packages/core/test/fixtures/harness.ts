@@ -105,12 +105,8 @@ export interface FakeSection {
 }
 
 export class FakeDom implements DomAccess {
-  shots: string[] = [];
   visited: string[] = [];
-  constructor(
-    private pages: Record<string, FakeSection> = {},
-    private screenshotCapable = false,
-  ) {}
+  constructor(private pages: Record<string, FakeSection> = {}) {}
   async withSection<T>(
     path: string,
     _settleMs: number,
@@ -123,11 +119,6 @@ export class FakeDom implements DomAccess {
       text: async () => pg.text ?? "",
       hrefs: async () => pg.hrefs ?? [],
     };
-    if (this.screenshotCapable) {
-      page.screenshot = async (rel: string) => {
-        this.shots.push(rel);
-      };
-    }
     return fn(page);
   }
 }
@@ -140,7 +131,7 @@ export interface TestCtx {
 
 export function makeTestCtx(
   client: FakeClient,
-  opts: { dom?: DomAccess; screenshots?: boolean; nonce?: string } = {},
+  opts: { dom?: DomAccess; nonce?: string } = {},
 ): TestCtx {
   const sink = new MemorySink();
   const logs: string[] = [];
@@ -150,7 +141,6 @@ export function makeTestCtx(
     nonce: opts.nonce ?? "deadbeef",
     timeZone: "UTC",
     dom: opts.dom,
-    screenshots: opts.screenshots,
     log: (m) => logs.push(m),
   });
   ctx.wait = async () => {}; // instant polling in tests

@@ -102,8 +102,8 @@ export class CdpSession {
     return new CdpClient(this.page, this.origin, this.prefix);
   }
 
-  domAccess(outDir: string): DomAccess {
-    return makeDomAccess(this.page, this.origin, this.prefix, outDir);
+  domAccess(): DomAccess {
+    return makeDomAccess(this.page, this.origin, this.prefix);
   }
 
   /** Disconnects the CDP websocket; does NOT kill the user's browser. */

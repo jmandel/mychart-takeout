@@ -79,16 +79,12 @@ documents/other/              downloaded document CONTENT (not just the list):
   NN_<desc>_detail.json         per-document metadata + detail response
 documents/ccda/               (if --ccda) standards C-CDA all-visits package
   HealthSummary_all_visits_CCDA.zip + extracted/  one ClinicalDocument per visit
-dom/                          per-section page HTML/text snapshots (if enabled);
-                              pages that render as empty app-shell boilerplate
-                              are skipped, so only pages with real content
-                              appear (billing lives ONLY here — no JSON API)
 raw_network/                  (CDP exports only) raw response log + bodies
 ```
 
 Not every folder exists in every export — presence depends on the person's data
 and how the export was run (browser exports omit `raw_network/`,
-`_captured_from_navigation/`, and screenshots).
+and `_captured_from_navigation/`).
 
 ## Read `GAPS.md` before concluding "there is no X"
 
@@ -144,7 +140,8 @@ Guidance:
 - **FHIR / bulk API** data (needs a separate OAuth client) and, on most
   instances, the **EHI computer-readable export** — neither is included.
 - **Detailed billing/financial** data — the portal serves it as web pages, not
-  an API, so only the `dom/` snapshot (if present) reflects it.
+  an API, and it is not captured yet (page shapes look heterogeneous across
+  instances; explicit capture is on the roadmap).
 - **Imaging pixels** (DICOM) — radiology *reports/narratives* are included, not
   the images themselves.
 

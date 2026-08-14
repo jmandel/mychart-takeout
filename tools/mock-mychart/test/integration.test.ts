@@ -100,11 +100,6 @@ describe.skipIf(!CHROMIUM)("in-browser export against mock MyChart", () => {
     expect(files["documents/ccda/extracted/IHE_XDM/SUBSET01/DOC0002.XML"]).toBeDefined();
   });
 
-  test("dom snapshots via iframes", () => {
-    expect(textOf("dom/test-results.html")).toContain("mock-section");
-    expect(files["dom/insurance.txt"]).toBeDefined();
-  });
-
   test("manifest + report layer", () => {
     const man = JSON.parse(textOf("_manifest.json"));
     expect(man.some((r: { domain: string }) => r.domain === "test-results")).toBe(true);

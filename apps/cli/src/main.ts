@@ -9,7 +9,7 @@
  *   eval <js> | eval --file F
  *   api <url> [--post JSON] [--method M] [--out FILE]
  *   snapshot <name>
- *   export [--out DIR] [--screenshots] [--no-dom] [--no-raw] [--ccda] [--only PHASE]...
+ *   export [--out DIR] [--no-raw] [--ccda] [--only PHASE]...
  *   report --dir DIR
  */
 import { readFileSync, writeFileSync } from "node:fs";
@@ -43,7 +43,7 @@ interface Args {
   opts: Record<string, string>;
   multi: Record<string, string[]>;
 }
-const BOOL = new Set(["screenshots", "no-dom", "no-raw", "ccda", "proxies"]);
+const BOOL = new Set(["no-raw", "ccda", "proxies"]);
 const MULTI = new Set(["only"]);
 
 function parse(argv: string[]): Args {
@@ -73,8 +73,6 @@ const norm = (p: string): string => PHASE_ALIAS[p] ?? p;
 
 interface ExportOpts {
   active: Set<string>;
-  noDom: boolean;
-  screenshots: boolean;
   doSalvage: boolean;
   host: string;
 }
@@ -84,8 +82,7 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
   const ctx: PhaseCtx = makeCtx({
     client: session.client(),
     sink: new FsSink(outDir),
-    dom: session.domAccess(outDir),
-    screenshots: o.screenshots,
+    dom: session.domAccess(),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
   const phaseTimings: { phase: string; ms: number; abortedDuring: boolean }[] = [];
@@ -108,7 +105,6 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
   await run("accessLog", phases.accessLog);
   await run("documents", phases.documents);
   await run("ccda", phases.ccda);
-  if (!o.noDom) await run("dom", phases.dom);
   if (o.doSalvage && o.active.has("salvage")) salvage(outDir, session.origin);
 
   await ctx.store.saveJson("_manifest.json", ctx.manifest);
@@ -141,13 +137,11 @@ async function runExport(a: Args): Promise<void> {
   const proxies = !!a.flags.proxies;
   const defaults = [
     "structured", "testResults", "visits", "messages", "flowsheets", "accessLog", "documents",
-    ...(ccda ? ["ccda"] : []), "dom", "salvage", "report",
+    ...(ccda ? ["ccda"] : []), "salvage", "report",
   ];
   const only = (a.multi.only ?? []).map(norm);
   const opts: ExportOpts = {
     active: new Set(only.length ? only : defaults),
-    noDom: !!a.flags["no-dom"],
-    screenshots: !!a.flags.screenshots,
     doSalvage: true,
     host: "",
   };

@@ -3,9 +3,8 @@
  *
  * Runs the SAME core phases as the CDP CLI, with transport = the page's own
  * fetch and output = an in-memory zip the user downloads. There is no salvage
- * phase in browser mode: we only see our own requests (no passive network
- * log), and the iframe-based dom phase covers the pages whose JSON only
- * renders in-page. Screenshots are likewise CDP-only.
+ * phase in browser mode (we only see our own requests — no passive network
+ * log) and no page rendering: every captured fact comes from the JSON API.
  */
 import { buildReport, makeCtx, OTHER_DOCUMENTS_LIST_KEY, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
 import { BUILD } from "./buildInfo";
@@ -14,7 +13,6 @@ import { BrowserClient, derivePrefix } from "./client";
 import { collectDebugReport } from "./debug";
 import { cookiesAreLive, ladderTranscript, pageToken, preflightMyChart, resolveMyChart, resolvedMyChart } from "./detect";
 import { capturedRequests, installNetCapture, observedApiPaths, resourceApiEntries } from "./netcapture";
-import { FetchDom } from "./fetchDom";
 import { exportFilename } from "./filename";
 import {
   currentJournal,
@@ -33,13 +31,8 @@ import { ZipSink } from "./zipSink";
 export interface RunOpts {
   /** Also request/download the standards C-CDA package (async server-side). */
   ccda?: boolean;
-  /** Capture per-section DOM snapshots via hidden iframes (default true). */
-  dom?: boolean;
-  /** Accepted for compatibility; ignored since the dom phase now fetches
-   *  markup instead of waiting for a framed page to settle. */
-  settleCapMs?: number;
   /** Category filter from the selection card; omitted = everything (default). */
-  categories?: { clinical?: boolean; messages?: boolean; documents?: boolean; dom?: boolean };
+  categories?: { clinical?: boolean; messages?: boolean; documents?: boolean };
   /** Documents (dcsID) the user opted out of on the selection card. */
   excludeDocIds?: string[];
   /** Census's LoadOtherDocuments payload — pre-seeded so the documents phase
@@ -57,7 +50,6 @@ const PHASE_LABEL: Record<string, string> = {
   accessLog: "access log",
   documents: "documents",
   ccda: "C-CDA package",
-  dom: "page snapshots",
 };
 
 async function run(opts: RunOpts = {}): Promise<Uint8Array> {
@@ -102,7 +94,6 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   const ctx = makeCtx({
     client,
     sink,
-    dom: new FetchDom(origin, prefix),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     log,
     // The ladder already verified this token with a real API call — seed it so
@@ -117,7 +108,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
 
   log(`Exporting from ${origin}${prefix} (token via ${resolved.source}, build ${BUILD}) …`);
   markExportStarted();
-  const cat = { clinical: true, messages: true, documents: true, dom: true, ...(opts.categories ?? {}) };
+  const cat = { clinical: true, messages: true, documents: true, ...(opts.categories ?? {}) };
   // Selection flow with the structured phase deselected: the documents phase
   // reads the list from the store, so seed it from the census.
   if (opts.docListJson !== undefined) {
@@ -128,7 +119,6 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     ...(cat.messages ? (["messages"] as const) : []),
     ...(cat.documents ? (["documents"] as const) : []),
     ...(opts.ccda ? (["ccda"] as const) : []),
-    ...(opts.dom !== false && cat.dom ? (["dom"] as const) : []),
   ];
   const phaseTimings: { phase: string; ms: number; abortedDuring: boolean }[] = [];
   for (let i = 0; i < order.length; i++) {

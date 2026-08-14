@@ -1,17 +1,11 @@
-import { join } from "node:path";
 import type { DomAccess, SectionPage } from "@mychart/core";
 import type { CdpPage } from "./page";
 
 /**
  * DomAccess over the attached CDP page — real navigation in the user's tab.
- * Paths are prefix-relative (catalog SECTIONS), joined to origin+prefix.
+ * Paths are prefix-relative, joined to origin+prefix.
  */
-export function makeDomAccess(
-  page: CdpPage,
-  origin: string,
-  prefix: string,
-  outDir: string,
-): DomAccess {
+export function makeDomAccess(page: CdpPage, origin: string, prefix: string): DomAccess {
   const resolve = (path: string): string => {
     if (path.startsWith("http")) return path;
     if (path.startsWith("/")) return origin + path;
@@ -42,9 +36,6 @@ export function makeDomAccess(
               `Array.from(document.querySelectorAll(${JSON.stringify(selector)}))` +
                 `.map((a) => a.getAttribute("href"))`,
             )) as (string | null)[],
-          screenshot: async (relPath: string) => {
-            await page.screenshot({ path: join(outDir, relPath), fullPage: true });
-          },
         };
         return fn(section);
       };

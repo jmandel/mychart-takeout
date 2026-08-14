@@ -10,5 +10,4 @@ export * from "./debug";
  */
 export * from "./client";
 export * from "./zipSink";
-export * from "./fetchDom";
 export * from "./overlay";
