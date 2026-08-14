@@ -1,5 +1,6 @@
 /** Minimal dependency-free progress overlay for the in-page exporter. */
 import { BUILD } from "./buildInfo";
+import { fmtBytes, onProgress } from "./progress";
 
 const OVERLAY_ID = "__mychart_export_overlay";
 
@@ -78,6 +79,15 @@ export function ensureOverlay(): Overlay {
   note.textContent = "Checking this is a MyChart page…";
   note.style.cssText = "opacity:.7;align-self:center;";
   bar.appendChild(note);
+
+  // Live download counter — one quiet line that updates in place, so the run
+  // shows accumulation without per-request log spam.
+  const stats = document.createElement("span");
+  stats.style.cssText = "opacity:.65;align-self:center;font-size:11px;white-space:nowrap;";
+  bar.appendChild(stats);
+  onProgress((bytes, requests) => {
+    stats.textContent = requests > 0 ? `${fmtBytes(bytes)} · ${requests} req` : "";
+  });
 
   // Always-present Debug button — useful precisely when detection fails.
   const debugBtn = document.createElement("button");

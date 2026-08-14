@@ -11,6 +11,9 @@ export class ExportStore {
   private mem = new Map<string, unknown>();
   /** Every rel path saved this run (any type) — used by the report manifest. */
   readonly savedFiles = new Set<string>();
+  /** Saved size per rel path — lets the manifest explain a huge export
+   *  (a single scanned document can dwarf everything else combined). */
+  readonly savedSizes = new Map<string, number>();
 
   constructor(readonly sink: Sink) {}
 
@@ -18,16 +21,20 @@ export class ExportStore {
   async saveJson(rel: string, value: unknown): Promise<void> {
     this.mem.set(rel, value);
     this.savedFiles.add(rel);
-    await this.sink.saveText(rel, JSON.stringify(value, null, 2));
+    const text = JSON.stringify(value, null, 2);
+    this.savedSizes.set(rel, text.length);
+    await this.sink.saveText(rel, text);
   }
 
   async saveText(rel: string, text: string): Promise<void> {
     this.savedFiles.add(rel);
+    this.savedSizes.set(rel, (text ?? "").length);
     await this.sink.saveText(rel, text ?? "");
   }
 
   async saveBytes(rel: string, bytes: Uint8Array): Promise<void> {
     this.savedFiles.add(rel);
+    this.savedSizes.set(rel, bytes.length);
     await this.sink.saveBytes(rel, bytes);
   }
 

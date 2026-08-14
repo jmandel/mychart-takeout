@@ -1,4 +1,5 @@
 import type { DomAccess, SectionPage } from "@mychart/core";
+import { addProgress } from "./progress";
 
 /**
  * DomAccess by fetching each section's HTML and parsing it inertly with
@@ -39,6 +40,7 @@ export class FetchDom implements DomAccess {
       throw new Error(`section ${path} redirected to login (${res.url}) — session may have ended`);
     }
     const htmlText = await res.text();
+    addProgress(htmlText.length);
     const doc = new DOMParser().parseFromString(htmlText, "text/html");
     const page: SectionPage = {
       html: async () => doc.documentElement?.outerHTML ?? htmlText,

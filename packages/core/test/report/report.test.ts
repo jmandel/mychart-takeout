@@ -135,7 +135,7 @@ describe("report builder (golden, python-verified)", () => {
   test("MANIFEST.json counts and records", async () => {
     const { sink } = await runFull();
     const man = JSON.parse(sink.files.get("MANIFEST.json")!);
-    expect(man).toEqual({
+    expect(man).toMatchObject({
       generated: TODAY,
       source: SRC,
       file_counts_by_top_dir: { "PATIENT_SUMMARY.json": 1, indexes: 8, "PATIENT_SUMMARY.md": 1 },
@@ -151,6 +151,16 @@ describe("report builder (golden, python-verified)", () => {
         messages: 5,
       },
     });
+    // Size accounting: a huge export must explain itself — where the bytes
+    // live and which single files dominate.
+    expect(man.total_bytes).toBeGreaterThan(0);
+    expect(Object.keys(man.bytes_by_top_dir)).toContain("indexes");
+    expect(man.largest_files.length).toBeGreaterThan(0);
+    expect(man.largest_files[0].bytes).toBeGreaterThanOrEqual(man.largest_files.at(-1).bytes);
+    for (const f of man.largest_files) {
+      expect(typeof f.file).toBe("string");
+      expect(typeof f.bytes).toBe("number");
+    }
   });
 
   test("README.md contains the counts lines", async () => {

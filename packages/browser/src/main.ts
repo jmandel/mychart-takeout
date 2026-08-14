@@ -26,6 +26,7 @@ import {
   step,
 } from "./journal";
 import { ensureOverlay } from "./overlay";
+import { resetProgress } from "./progress";
 import { ZipSink } from "./zipSink";
 
 export interface RunOpts {
@@ -41,6 +42,7 @@ export interface RunOpts {
 async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   const overlay = ensureOverlay();
   overlay.setRunning();
+  resetProgress(); // fresh counter for this run (re-runs in the same tab)
   const log = (m: string) => {
     overlay.log(m);
     console.log(m);

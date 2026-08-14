@@ -1,5 +1,6 @@
 import { isLoggedOutUrl, type FetchInit, type McResponse, type MyChartClient } from "@mychart/core";
 import { step } from "./journal";
+import { addProgress } from "./progress";
 
 /** First path segment of a MyChart app URL ("/MyChart", "/MyChart-PRD", …). */
 export function derivePrefix(pathname: string, fallback = "/MyChart"): string {
@@ -65,12 +66,14 @@ export class BrowserClient implements MyChartClient {
     const headers: Record<string, string> = {};
     r.headers.forEach((v, k) => (headers[k] = v));
     step(`✓ ${r.status} ${p}${isLoggedOutUrl(r.url) ? " ← LOGGED OUT (redirected to login)" : ""}`);
+    const body = await r.text();
+    addProgress(body.length);
     return {
       status: r.status,
       contentType: r.headers.get("content-type"),
       url: r.url,
       headers,
-      body: await r.text(),
+      body,
     };
   }
 
@@ -87,7 +90,9 @@ export class BrowserClient implements MyChartClient {
       BrowserClient.rethrow(e, p, init.timeoutMs);
     }
     step(`✓ ${r.status} (bytes) ${p}${isLoggedOutUrl(r.url) ? " ← LOGGED OUT" : ""}`);
-    return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    addProgress(bytes.length);
+    return { status: r.status, bytes };
   }
 
   async getPageToken(): Promise<string | null> {
