@@ -100,6 +100,11 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   const zip = sink.finalize();
   overlay.setDone(zip, exportFilename(location.host, patient));
   log(`Done: ${zip.length} bytes zipped${patient ? ` for ${patient}` : ""}.`);
+  // "Ran but empty" looks like success — surface it and point at Debug.
+  if (!patient) {
+    log("⚠ No patient data was found — this export looks EMPTY.");
+    log("   Click Debug (below) to make a report and share it privately with Josh.");
+  }
   return zip;
 }
 

@@ -74,7 +74,7 @@ export function ensureOverlay(): Overlay {
   // Always-present Debug button — useful precisely when detection fails.
   const debugBtn = document.createElement("button");
   debugBtn.textContent = "Debug";
-  debugBtn.title = "Collect a shareable, PHI-free debug report";
+  debugBtn.title = "Collect a debug report to review and share privately with Josh";
   debugBtn.style.cssText =
     "background:#374151;color:#e5e7eb;border:0;border-radius:6px;padding:6px 12px;" +
     "cursor:pointer;font:inherit;margin-left:auto;";
