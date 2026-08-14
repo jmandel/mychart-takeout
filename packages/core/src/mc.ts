@@ -44,7 +44,9 @@ export class Mc {
       method: "GET",
       headers: { "X-Requested-With": "XMLHttpRequest" },
     });
-    let tok = parseCsrfToken(r.body);
+    // A logged-out session redirects this to the login page (whose HTML also
+    // has a __RequestVerificationToken) — don't adopt that token.
+    let tok = isLoggedOutUrl(r.url) ? null : parseCsrfToken(r.body);
     // 2) Newer Epic ("PX") returns no parseable token there, but embeds it in
     //    the page — read it from the DOM when the driver can (browser/CDP).
     if (!tok && this.client.getPageToken) {
