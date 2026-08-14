@@ -26,6 +26,8 @@ import {
   classicJson,
   conversationDetails,
   conversationList,
+  docBytes,
+  docToken,
   flowsheetReadings,
   loadPastPages,
   loadUpcoming,
@@ -223,6 +225,23 @@ export function startMockMyChart(opts: MockOpts = {}): MockServer {
         });
       }
 
+      // ---- per-document content download (GET, binary, token-gated).
+      // Sends Content-Length (a real Epic behavior the census flow relies on:
+      // size is knowable from headers alone, before any body is read).
+      if (path === "Documents/ViewDocument/DownloadOrStream") {
+        const dcsId = url.searchParams.get("dcsId") ?? "";
+        const bytes = docBytes(dcsId);
+        if (!bytes || url.searchParams.get("token") !== docToken(dcsId)) {
+          return json({ error: "bad dcsId/token" }, 400);
+        }
+        return new Response(bytes.slice().buffer as ArrayBuffer, {
+          headers: {
+            "content-type": dcsId.endsWith("A") ? "application/pdf" : "image/tiff",
+            "content-length": String(bytes.length),
+          },
+        });
+      }
+
       // ---- C-CDA package download (GET, binary)
       if (path === "Documents/Released/Download") {
         if (!url.searchParams.get("releaseId") || !url.searchParams.get("docId")) {
@@ -296,6 +315,11 @@ export function startMockMyChart(opts: MockOpts = {}): MockServer {
       }
       if (path === "api/requested-records/GetReleaseRecords") return json(releaseRecords);
       if (path === "api/record-download/GetDownloadStarted") return json({ started: true });
+      if (path === "api/documents/viewer/GetDocumentDetails") {
+        const dcsId = String(body.dcsId ?? "");
+        if (!docBytes(dcsId)) return json({ error: `unknown document ${dcsId}` }, 404);
+        return json({ dcsId, token: docToken(dcsId), orgId: "" });
+      }
 
       return json({ error: `no mock route for ${path}` }, 404);
     },

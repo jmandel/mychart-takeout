@@ -12,7 +12,11 @@ import { isRecord, pad2, slug } from "../util";
  * Defensive throughout: unknown shapes, missing ids/tokens, or a failed
  * download skip that one document and never abort the export.
  */
-const LIST_KEY = "structured/documents/documents__viewer__LoadOtherDocuments.json";
+/** Where the structured phase saves the documents index — exported so the
+ *  census flow can pre-seed it when the structured phase is deselected. */
+export const OTHER_DOCUMENTS_LIST_KEY =
+  "structured/documents/documents__viewer__LoadOtherDocuments.json";
+const LIST_KEY = OTHER_DOCUMENTS_LIST_KEY;
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -28,11 +32,17 @@ export async function documents(ctx: PhaseCtx): Promise<void> {
   }
   let files = 0;
   let details = 0;
+  let excluded = 0;
   for (let i = 0; i < docs.length; i++) {
+    if (ctx.signal.aborted) break;
     const d = docs[i];
     if (!isRecord(d)) continue;
     const dcsId = str(d.dcsID) || str(d.docID);
     if (!dcsId) continue;
+    if (ctx.excludeDocIds?.has(dcsId)) {
+      excluded++;
+      continue;
+    }
     const ext = (str(d.docExt) || "PDF").toLowerCase();
     const name = `${pad2(i)}_${slug(str(d.docDesc) || str(d.docType) || "document", 50)}`;
     try {
@@ -71,6 +81,7 @@ export async function documents(ctx: PhaseCtx): Promise<void> {
     "documents",
     "content",
     { status: 200, body: "" },
-    `${docs.length} docs, ${details} details, ${files} files downloaded`,
+    `${docs.length} docs, ${details} details, ${files} files downloaded` +
+      (excluded ? `, ${excluded} excluded by user` : ""),
   );
 }

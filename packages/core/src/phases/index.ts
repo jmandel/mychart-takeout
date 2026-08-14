@@ -2,6 +2,7 @@ import type { PhaseCtx } from "../ctx";
 import { accessLog } from "./accessLog";
 import { ccda } from "./ccda";
 import { documents } from "./documents";
+export { OTHER_DOCUMENTS_LIST_KEY } from "./documents";
 import { dom } from "./dom";
 import { flowsheets } from "./flowsheets";
 import { messages } from "./messages";

@@ -7,8 +7,9 @@
  * log), and the iframe-based dom phase covers the pages whose JSON only
  * renders in-page. Screenshots are likewise CDP-only.
  */
-import { buildReport, makeCtx, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
+import { buildReport, makeCtx, OTHER_DOCUMENTS_LIST_KEY, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
 import { BUILD } from "./buildInfo";
+import { runCensus } from "./census";
 import { BrowserClient, derivePrefix } from "./client";
 import { collectDebugReport } from "./debug";
 import { cookiesAreLive, ladderTranscript, pageToken, preflightMyChart, resolveMyChart, resolvedMyChart } from "./detect";
@@ -37,11 +38,31 @@ export interface RunOpts {
   /** Accepted for compatibility; ignored since the dom phase now fetches
    *  markup instead of waiting for a framed page to settle. */
   settleCapMs?: number;
+  /** Category filter from the selection card; omitted = everything (default). */
+  categories?: { clinical?: boolean; messages?: boolean; documents?: boolean; dom?: boolean };
+  /** Documents (dcsID) the user opted out of on the selection card. */
+  excludeDocIds?: string[];
+  /** Census's LoadOtherDocuments payload — pre-seeded so the documents phase
+   *  works even when the structured phase is deselected. */
+  docListJson?: unknown;
 }
+
+/** Phase names → what the status line calls them. */
+const PHASE_LABEL: Record<string, string> = {
+  structured: "clinical data",
+  testResults: "test results",
+  visits: "visits & notes",
+  messages: "messages",
+  flowsheets: "tracked readings",
+  accessLog: "access log",
+  documents: "documents",
+  ccda: "C-CDA package",
+  dom: "page snapshots",
+};
 
 async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   const overlay = ensureOverlay();
-  overlay.setRunning();
+  overlay.setBusy("Verifying sign-in…");
   resetProgress(); // fresh counter for this run (re-runs in the same tab)
   const log = (m: string) => {
     overlay.log(m);
@@ -59,7 +80,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     const msg =
       "You've been signed out of MyChart since this page loaded.\nSign in again in this tab, then click Start export.";
     log(`!! ${msg.replace(/\n/g, " ")}`);
-    overlay.setError(msg);
+    overlay.setFailed(msg);
     throw new Error(msg);
   }
   // First Start click runs the full verify ladder (page load only did GETs).
@@ -71,7 +92,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
         "click any MyChart menu item, then click Debug and share the report privately with Josh."
       : `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.`;
     log(`!! ${msg.replace(/\n/g, " ")}`);
-    overlay.setError(msg);
+    overlay.setFailed(msg);
     throw new Error(msg);
   }
   const { origin, prefix } = resolved;
@@ -91,24 +112,29 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     // grind for hours; past this, remaining calls record as skipped.
     runBudgetMs: 15 * 60_000,
     observedApiPaths,
+    excludeDocIds: opts.excludeDocIds?.length ? new Set(opts.excludeDocIds) : undefined,
   });
 
   log(`Exporting from ${origin}${prefix} (token via ${resolved.source}, build ${BUILD}) …`);
   markExportStarted();
+  const cat = { clinical: true, messages: true, documents: true, dom: true, ...(opts.categories ?? {}) };
+  // Selection flow with the structured phase deselected: the documents phase
+  // reads the list from the store, so seed it from the census.
+  if (opts.docListJson !== undefined) {
+    await ctx.store.saveJson(OTHER_DOCUMENTS_LIST_KEY, opts.docListJson);
+  }
   const order: (keyof typeof phases)[] = [
-    "structured",
-    "testResults",
-    "visits",
-    "messages",
-    "flowsheets",
-    "accessLog",
-    "documents",
+    ...(cat.clinical ? (["structured", "testResults", "visits", "flowsheets", "accessLog"] as const) : []),
+    ...(cat.messages ? (["messages"] as const) : []),
+    ...(cat.documents ? (["documents"] as const) : []),
     ...(opts.ccda ? (["ccda"] as const) : []),
-    ...(opts.dom !== false ? (["dom"] as const) : []),
+    ...(opts.dom !== false && cat.dom ? (["dom"] as const) : []),
   ];
   const phaseTimings: { phase: string; ms: number; abortedDuring: boolean }[] = [];
-  for (const name of order) {
+  for (let i = 0; i < order.length; i++) {
+    const name = order[i]!;
     if (ctx.signal.aborted) break; // logged out mid-run — stop, don't save shells
+    overlay.setBusy(`Exporting ${PHASE_LABEL[name] ?? name} (${i + 1}/${order.length})…`);
     const t0 = Date.now();
     try {
       await phases[name](ctx);
@@ -120,6 +146,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
       phaseTimings.push({ phase: name, ms: Date.now() - t0, abortedDuring: ctx.signal.aborted });
     }
   }
+  overlay.setBusy("Building the report…");
   await ctx.store.saveJson("_manifest.json", ctx.manifest);
   const gaps = summarizeGaps(ctx.manifest, ctx.signal.aborted ? ctx.signal.reason : undefined);
   await ctx.store.saveJson("gaps.json", gaps);
@@ -172,7 +199,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     }
     log("   The zip includes _diagnostics/ — send it (or a Debug report) privately to Josh.");
     finish(/^circuit-open|^run-deadline/.test(r) ? "error" : "logged-out", r);
-  } else if (!patient) {
+  } else if (!patient && cat.clinical) {
     // "Ran but empty" looks like success — surface it and point at Debug.
     log("⚠ No patient data was found — this export looks EMPTY.");
     log("   Click Debug (below) to make a report and share it privately with Josh.");
@@ -203,19 +230,55 @@ globalThis.__mychartExport = { run };
 startRun(location.host, derivePrefix(location.pathname));
 
 const overlay = ensureOverlay();
-overlay.onStart(() => {
-  // run() sets its own error banner on a failed preflight; for anything else
-  // that throws, surface it as an error state (not a stuck "Running…").
-  void run().catch((e) => {
+// run() sets its own failure banner on a failed preflight; for anything else
+// that throws, surface it as a failed state (not a stuck "Exporting…").
+const startRunSafely = (o: RunOpts): void => {
+  void run(o).catch((e) => {
     const msg = e instanceof Error ? e.message : String(e);
     finish("error", msg);
-    if (!/isn't a signed-in MyChart page|signed out of MyChart/i.test(msg)) {
-      overlay.setError(`Export failed: ${msg}`);
+    if (!/signed-in MyChart page|signed out of MyChart|candidates authenticated/i.test(msg)) {
+      overlay.setFailed(`Export failed: ${msg}`);
     }
   });
-});
+};
 // The Debug button works in any state — especially when detection fails.
 overlay.onDebug(() => collectDebugReport());
+
+function authFailureMessage(): string {
+  return pageToken()
+    ? "This looks like MyChart, but none of our credential candidates authenticated — every verification bounced to login.\n" +
+        "If MyChart now shows you signed out, sign in again, click any menu item, then click Debug and share the report privately with Josh."
+    : `This isn't a signed-in MyChart page (${location.host}).\nOpen your MyChart portal, sign in, then run it there.`;
+}
+
+/** "scan first & choose" — verify, census (reads + cancelled headers only),
+ *  then the selection card. The big default button skips all of this. */
+async function scanFirst(): Promise<void> {
+  overlay.setBusy("Verifying sign-in…");
+  const resolved = await resolveMyChart();
+  if (!resolved) {
+    overlay.setFailed(authFailureMessage());
+    return;
+  }
+  overlay.setBusy("Scanning your record…");
+  try {
+    const census = await runCensus(resolved, (s) => overlay.setBusy(s));
+    overlay.setSelect(census, (sel) =>
+      startRunSafely({
+        categories: {
+          clinical: sel.clinical,
+          messages: sel.messages,
+          documents: sel.documents,
+          dom: sel.dom,
+        },
+        excludeDocIds: sel.excludeDocIds,
+        docListJson: census.listJson,
+      }),
+    );
+  } catch (e) {
+    overlay.setFailed(`Scan failed: ${e}`);
+  }
+}
 
 // If a previous export in this tab didn't finish (it may have logged the user
 // out and reloaded the tab), point them at Debug — the report includes that
@@ -231,22 +294,25 @@ if (crashed) {
   overlay.log("   Click Debug to capture what happened (and Start to try again).");
 }
 
-// GET-only preflight: show Start when this looks like a signed-in MyChart
-// page, without sending a single POST. Verification — the part that can trip
-// Epic's anti-CSRF session kill — waits for the user's explicit Start click,
-// so merely loading the bookmarklet can never sign anyone out.
+// GET-only preflight: show the Ready state when this looks like a signed-in
+// MyChart page, without sending a single POST. Verification — the part that
+// can trip Epic's anti-CSRF session kill — waits for the user's explicit
+// click, so merely loading the bookmarklet can never sign anyone out.
 void (async () => {
   const state = await preflightMyChart();
   if (state === "likely") {
     overlay.log(`This looks like a signed-in MyChart page (${location.host}).`);
-    overlay.setReady();
+    overlay.setReady({
+      onExportAll: () => startRunSafely({}),
+      onScanFirst: () => void scanFirst(),
+    });
   } else if (state === "signed-out") {
-    overlay.setError(
+    overlay.setFailed(
       `You don't appear to be signed in to MyChart (${location.host}).\n` +
         "Sign in, then run the bookmarklet again — or click Debug to make a report to share privately with Josh.",
     );
   } else {
-    overlay.setError(
+    overlay.setFailed(
       `This doesn't look like a MyChart page (${location.host}).\n` +
         "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",
     );

@@ -453,6 +453,32 @@ export function buildCcdaZip(): Uint8Array {
 }
 
 // ---------------------------------------------------------------- misc simple
+/**
+ * Other-documents with CONTENT, sized to exercise the census/selection flow:
+ * two ordinary files and one deliberate size outlier (mirrors the field case
+ * where a single uncompressed insurance-card scan dwarfed the whole export).
+ */
+export const OTHER_DOCUMENTS = [
+  { dcsID: "DOC-A", docExt: "PDF", docDesc: "After Visit Summary Letter", docType: "Letter", date: "3/2/2026" },
+  { dcsID: "DOC-B", docExt: "TIF", docDesc: "Insurance Card", docType: "Insurance Card", date: "1/5/2026" },
+  { dcsID: "DOC-C", docExt: "TIF", docDesc: "ID Card Scan (high resolution)", docType: "Insurance Card", date: "10/1/2025" },
+];
+
+const DOC_SIZES: Record<string, number> = { "DOC-A": 2_000, "DOC-B": 40_000, "DOC-C": 3_000_000 };
+
+export function docToken(dcsId: string): string {
+  return `doc-token-${dcsId}`;
+}
+
+/** Deterministic filler bytes for a document (no randomness — resumable CI). */
+export function docBytes(dcsId: string): Uint8Array | null {
+  const n = DOC_SIZES[dcsId];
+  if (!n) return null;
+  const b = new Uint8Array(n);
+  for (let i = 0; i < n; i++) b[i] = (i * 31 + dcsId.charCodeAt(dcsId.length - 1)) % 251;
+  return b;
+}
+
 export const simpleJson: Record<string, unknown> = {
   "api/health-summary/FetchHealthSummary": healthSummary,
   "api/health-summary/FetchH2GHeader": { header: null },
@@ -472,7 +498,7 @@ export const simpleJson: Record<string, unknown> = {
   "api/track-my-health/GetExternalAccounts": { accounts: [] },
   "api/letters/GetLettersList": { letters: [] },
   "api/item-feed/FetchItemFeed": { items: [] },
-  "api/documents/viewer/LoadOtherDocuments": { documents: [] },
+  "api/documents/viewer/LoadOtherDocuments": { documents: OTHER_DOCUMENTS },
 };
 
 /** CLASSIC endpoints (form/nobody POSTs), keyed by pathname under the prefix. */

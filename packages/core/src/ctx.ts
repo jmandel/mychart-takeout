@@ -42,6 +42,8 @@ export interface PhaseCtx {
    * path the app actually uses.
    */
   observedApiPaths?: () => string[];
+  /** Documents the user chose to skip (census/selection flow) — by dcsID. */
+  excludeDocIds?: ReadonlySet<string>;
   /** Absent when the environment can't render pages; phases degrade + note it. */
   dom?: DomAccess;
   /** dom phase: also capture PNGs (CDP only). */
@@ -61,6 +63,7 @@ export interface MakeCtxOpts {
   /** Wall-clock budget for the whole run; past it, remaining calls skip. */
   runBudgetMs?: number;
   observedApiPaths?: () => string[];
+  excludeDocIds?: ReadonlySet<string>;
 }
 
 export function makeCtx(opts: MakeCtxOpts): PhaseCtx {
@@ -78,6 +81,7 @@ export function makeCtx(opts: MakeCtxOpts): PhaseCtx {
     signal,
     health,
     observedApiPaths: opts.observedApiPaths,
+    excludeDocIds: opts.excludeDocIds,
     rec(domain, endpoint, res, note = "", extra = {}) {
       const ok = res !== null && res.status === 200;
       // Classify real HTTP responses (they carry url/contentType); a bare
