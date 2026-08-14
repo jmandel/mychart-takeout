@@ -52,8 +52,11 @@ async function detectionSettled(page: Page): Promise<void> {
   await page
     .waitForFunction(
       () => {
-        const t = document.getElementById("__mychart_export_overlay")?.textContent ?? "";
-        return /Ready|Detected MyChart|isn't a signed-in|aren't authenticating|Dismiss/.test(t);
+        // The panel renders inside a shadow root (page-CSS isolation), so the
+        // host's textContent is empty — read through shadowRoot.
+        const h = document.getElementById("__mychart_export_overlay");
+        const t = h?.shadowRoot?.textContent ?? h?.textContent ?? "";
+        return /Ready|isn't a signed-in|doesn't look like|don't appear to be signed in|Dismiss/.test(t);
       },
       undefined,
       { timeout: 20_000 },

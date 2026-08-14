@@ -89,19 +89,29 @@ function linkButton(label: string): HTMLButtonElement {
 
 /** Create (or return the existing) overlay panel. Idempotent across re-pastes. */
 export function ensureOverlay(): Overlay {
-  const existing = document.getElementById(OVERLAY_ID);
-  if (existing && (existing as HTMLElement & { __overlay?: Overlay }).__overlay) {
-    return (existing as HTMLElement & { __overlay?: Overlay }).__overlay!;
-  }
-  existing?.remove();
+  const existingHost = document.getElementById(OVERLAY_ID) as
+    | (HTMLElement & { __overlay?: Overlay })
+    | null;
+  if (existingHost?.__overlay) return existingHost.__overlay;
+  existingHost?.remove();
+
+  // The panel lives inside a SHADOW ROOT: the host page's stylesheets cannot
+  // cross the boundary, so MyChart's own global CSS (label/input/span rules)
+  // can't distort the overlay — observed in the field as staircase-indented,
+  // narrow-wrapped rows. Inheritance still crosses, so the panel pins font and
+  // color explicitly. All styling stays CSSOM (.style.cssText), which strict
+  // CSP style-src policies don't block (a <style> tag might be).
+  const host = document.createElement("div");
+  host.id = OVERLAY_ID;
+  const shadow = host.attachShadow({ mode: "open" });
 
   const root = el(
     "div",
     `position:fixed;right:16px;bottom:16px;z-index:2147483647;width:380px;max-height:70vh;` +
       `background:${T.bg};color:${T.ink};font:${T.font};border:1px solid ${T.line};` +
-      `border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;`,
+      `border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.5);display:flex;flex-direction:column;overflow:hidden;` +
+      `text-align:left;letter-spacing:normal;box-sizing:border-box;`,
   );
-  root.id = OVERLAY_ID;
 
   // ---- title bar (permanent)
   const title = el(
@@ -119,12 +129,16 @@ export function ensureOverlay(): Overlay {
   );
   closeBtn.title = "Close (does not cancel a download already saved)";
   closeBtn.setAttribute("aria-label", "Close");
-  closeBtn.addEventListener("click", () => root.remove());
+  closeBtn.addEventListener("click", () => host.remove());
   title.appendChild(closeBtn);
   root.appendChild(title);
 
-  // ---- state-owned content region
-  const content = el("div", "padding:12px;display:flex;flex-direction:column;gap:10px;");
+  // ---- state-owned content region (scrolls when a state outgrows the panel —
+  // a long selection card must never clip unreachably)
+  const content = el(
+    "div",
+    "padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;flex:1;min-height:0;",
+  );
   root.appendChild(content);
 
   // ---- footer (permanent): details toggle · byte counter · Debug
@@ -157,7 +171,8 @@ export function ensureOverlay(): Overlay {
   const logBox = el("div", "padding:8px 12px;overflow-y:auto;white-space:pre-wrap;font-size:11px;opacity:.8;");
   drawer.appendChild(logBox);
   root.appendChild(drawer);
-  document.body.appendChild(root);
+  shadow.appendChild(root);
+  document.body.appendChild(host);
 
   let drawerOpen = false;
   const setDrawer = (open: boolean): void => {
@@ -186,7 +201,7 @@ export function ensureOverlay(): Overlay {
     const row = el("div", "display:flex;gap:8px;align-items:center;");
     for (const e of extra) row.appendChild(e);
     const dismiss = button("Dismiss", T.line, T.ink);
-    dismiss.addEventListener("click", () => root.remove());
+    dismiss.addEventListener("click", () => host.remove());
     row.appendChild(dismiss);
     return row;
   };
@@ -369,6 +384,6 @@ export function ensureOverlay(): Overlay {
     },
   };
   overlay.setChecking("Checking this is a MyChart page…");
-  (root as HTMLElement & { __overlay?: Overlay }).__overlay = overlay;
+  (host as HTMLElement & { __overlay?: Overlay }).__overlay = overlay;
   return overlay;
 }
