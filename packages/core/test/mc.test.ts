@@ -16,6 +16,30 @@ describe("parseCsrfToken", () => {
   });
 });
 
+describe("Mc logout signal", () => {
+  test("trips the abort signal when a call bounces to login", async () => {
+    const signal = { aborted: false, reason: "" };
+    const client: MyChartClient = {
+      origin: "https://h",
+      prefix: "/MyChart",
+      async fetchText(url: string): Promise<McResponse> {
+        if (url.endsWith("/Home/CSRFToken")) {
+          return { status: 200, contentType: "text/html", url, body: '<input name="__RequestVerificationToken" value="t"/>' };
+        }
+        // The API call is answered by the login page (session died).
+        return { status: 200, contentType: "text/html", url: "https://h/MyChart/Authentication/Login", body: "<html>login</html>" };
+      },
+      async fetchBytes() {
+        return { status: 200, bytes: new Uint8Array() };
+      },
+    };
+    const mc = new Mc(client, signal);
+    await mc.api("api/allergies/LoadAllergies", {});
+    expect(signal.aborted).toBe(true);
+    expect(signal.reason).toBe("api/allergies/LoadAllergies");
+  });
+});
+
 describe("Mc token fallback (newer Epic / PX)", () => {
   test("uses getPageToken when /Home/CSRFToken returns no token", async () => {
     let pageTokenReads = 0;

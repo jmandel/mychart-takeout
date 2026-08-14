@@ -6,6 +6,7 @@
  * Shared by the on-load detection, the export run, and the debug report.
  */
 import { derivePrefix } from "./client";
+import { step } from "./journal";
 
 /** Prefixes implied by same-origin asset/link/form URLs already on the page. */
 export function discoverPrefixes(): string[] {
@@ -60,7 +61,9 @@ export function pageToken(): string | null {
 /** Token from /Home/CSRFToken at a prefix (hidden input or bare body), else null. */
 export async function tokenAt(prefix: string): Promise<string | null> {
   try {
+    step(`→ GET ${prefix}/Home/CSRFToken (detect)`);
     const r = await fetch(`${location.origin}${prefix}/Home/CSRFToken`, { credentials: "include" });
+    step(`✓ ${r.status} ${prefix}/Home/CSRFToken (detect)`);
     if (!r.ok) return null;
     const body = await r.text();
     const m = /name="__RequestVerificationToken"[^>]*value="([^"]+)"/.exec(body);

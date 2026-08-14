@@ -18,10 +18,19 @@ export function parseCsrfToken(body: string): string | null {
  * "api/test-results/GetList"; absolute http(s) URLs and already-/-prefixed
  * paths pass through untouched.
  */
+/** A response URL that means the session died (bounced to login/logout). */
+export function isLoggedOutUrl(url: string): boolean {
+  return /\/Authentication\/Login|action=logout|\/bye\.asp/i.test(url || "");
+}
+
 export class Mc {
   private tok: string | null = null;
 
-  constructor(readonly client: MyChartClient) {}
+  /** `signal` (from makeCtx) is tripped the first time a call bounces to login. */
+  constructor(
+    readonly client: MyChartClient,
+    private readonly signal?: { aborted: boolean; reason: string },
+  ) {}
 
   url(path: string): string {
     if (path.startsWith("http") || path.startsWith("/")) return path;
@@ -60,6 +69,12 @@ export class Mc {
       res.json = JSON.parse(res.body);
     } catch {
       res.json = undefined;
+    }
+    // Session died mid-run: record the culprit once and let phases/the driver
+    // stop instead of saving 30+ login-page shells as "data".
+    if (this.signal && !this.signal.aborted && isLoggedOutUrl(res.url)) {
+      this.signal.aborted = true;
+      this.signal.reason = path;
     }
     return res;
   }

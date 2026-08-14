@@ -28,6 +28,12 @@ export interface PhaseCtx {
   ): void;
   log(msg: string): void;
   wait(ms: number): Promise<void>;
+  /**
+   * Set true when the session dies mid-run (a call redirected to login). Mc
+   * sets it; phases and the driver's phase loop check it and stop instead of
+   * saving login-page shells as "data".
+   */
+  signal: { aborted: boolean; reason: string };
   /** Absent when the environment can't render pages; phases degrade + note it. */
   dom?: DomAccess;
   /** dom phase: also capture PNGs (CDP only). */
@@ -47,13 +53,15 @@ export interface MakeCtxOpts {
 export function makeCtx(opts: MakeCtxOpts): PhaseCtx {
   const log = opts.log ?? ((m: string) => console.log(m));
   const manifest: ManifestEntry[] = [];
+  const signal = { aborted: false, reason: "" };
   return {
     client: opts.client,
-    mc: new Mc(opts.client),
+    mc: new Mc(opts.client, signal),
     store: new ExportStore(opts.sink),
     nonce: opts.nonce ?? randomNonce(),
     timeZone: opts.timeZone ?? "UTC",
     manifest,
+    signal,
     rec(domain, endpoint, res, note = "", extra = {}) {
       const ok = res !== null && res.status === 200;
       // Classify real HTTP responses (they carry url/contentType); a bare

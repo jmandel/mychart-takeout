@@ -92,3 +92,13 @@ describe("structured phase", () => {
     expect(simpleRecs[0]!.status).toBe(200);
   });
 });
+
+describe("structured phase respects the abort signal", () => {
+  test("makes no calls once the session is flagged logged-out", async () => {
+    const c = new FakeClient({});
+    const { ctx } = makeTestCtx(c);
+    ctx.signal.aborted = true;
+    await phases.structured(ctx);
+    expect(c.calls.length).toBe(0);
+  });
+});

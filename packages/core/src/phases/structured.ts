@@ -12,6 +12,7 @@ function resolveBody(body: SimpleBody, ctx: PhaseCtx): Record<string, unknown> {
 export async function structured(ctx: PhaseCtx): Promise<void> {
   ctx.log("\n== structured: single-call domains ==");
   for (const { domain, path, body } of SIMPLE) {
+    if (ctx.signal.aborted) return;
     try {
       const r = await ctx.mc.api(path, resolveBody(body, ctx));
       // Name from the part after "api/" when present, else the whole path —
@@ -29,6 +30,7 @@ export async function structured(ctx: PhaseCtx): Promise<void> {
   }
   ctx.log("== structured: classic (form/get) domains ==");
   for (const { domain, path, form, kind } of CLASSIC) {
+    if (ctx.signal.aborted) return;
     try {
       const r =
         kind === "form" ? await ctx.mc.form(path, form)

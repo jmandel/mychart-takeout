@@ -89,7 +89,7 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
   const run = async (name: string, phase: Phase): Promise<void> => {
-    if (!o.active.has(name)) return;
+    if (!o.active.has(name) || ctx.signal.aborted) return;
     try {
       await phase(ctx);
     } catch (e) {

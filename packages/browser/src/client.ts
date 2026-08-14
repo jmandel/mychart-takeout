@@ -1,9 +1,19 @@
-import type { FetchInit, McResponse, MyChartClient } from "@mychart/core";
+import { isLoggedOutUrl, type FetchInit, type McResponse, type MyChartClient } from "@mychart/core";
+import { step } from "./journal";
 
 /** First path segment of a MyChart app URL ("/MyChart", "/MyChart-PRD", …). */
 export function derivePrefix(pathname: string, fallback = "/MyChart"): string {
   const seg = pathname.split("/").filter(Boolean)[0];
   return seg ? `/${seg}` : fallback;
+}
+
+/** Path only (drop origin + query) — journal entries carry no PHI. */
+function journalPath(u: string): string {
+  try {
+    return new URL(u, location.href).pathname;
+  } catch {
+    return u.split("?")[0] || u;
+  }
 }
 
 /**
@@ -33,9 +43,12 @@ export class BrowserClient implements MyChartClient {
   }
 
   async fetchText(pathOrUrl: string, init: FetchInit = {}): Promise<McResponse> {
+    const p = journalPath(pathOrUrl);
+    step(`→ ${init.method ?? (init.body ? "POST" : "GET")} ${p}`); // persisted BEFORE the fetch
     const r = await fetch(this.resolve(pathOrUrl), this.init(init));
     const headers: Record<string, string> = {};
     r.headers.forEach((v, k) => (headers[k] = v));
+    step(`✓ ${r.status} ${p}${isLoggedOutUrl(r.url) ? " ← LOGGED OUT (redirected to login)" : ""}`);
     return {
       status: r.status,
       contentType: r.headers.get("content-type"),
@@ -49,7 +62,10 @@ export class BrowserClient implements MyChartClient {
     pathOrUrl: string,
     init: FetchInit = {},
   ): Promise<{ status: number; bytes: Uint8Array }> {
+    const p = journalPath(pathOrUrl);
+    step(`→ GET(bytes) ${p}`);
     const r = await fetch(this.resolve(pathOrUrl), this.init(init));
+    step(`✓ ${r.status} (bytes) ${p}${isLoggedOutUrl(r.url) ? " ← LOGGED OUT" : ""}`);
     return { status: r.status, bytes: new Uint8Array(await r.arrayBuffer()) };
   }
 

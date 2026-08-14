@@ -8,11 +8,21 @@
  * renders in-page. Screenshots are likewise CDP-only.
  */
 import { buildReport, makeCtx, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
-import { BrowserClient } from "./client";
+import { BrowserClient, derivePrefix } from "./client";
 import { collectDebugReport } from "./debug";
 import { resolveMyChart } from "./detect";
 import { FetchDom } from "./fetchDom";
 import { exportFilename } from "./filename";
+import {
+  crashedRun,
+  finish,
+  formatJournal,
+  likelyCulprit,
+  markExportStarted,
+  previousJournal,
+  startRun,
+  step,
+} from "./journal";
 import { ensureOverlay } from "./overlay";
 import { ZipSink } from "./zipSink";
 
@@ -32,6 +42,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   const log = (m: string) => {
     overlay.log(m);
     console.log(m);
+    step(m); // phase-level context in the persisted journal
   };
 
   // Resolve WHERE MyChart is (correct path prefix) and confirm we're signed in,
@@ -57,6 +68,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   });
 
   log(`Exporting from ${origin}${prefix} …`);
+  markExportStarted();
   const order: (keyof typeof phases)[] = [
     "structured",
     "testResults",
@@ -69,6 +81,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     ...(opts.dom !== false ? (["dom"] as const) : []),
   ];
   for (const name of order) {
+    if (ctx.signal.aborted) break; // logged out mid-run — stop, don't save shells
     try {
       await phases[name](ctx);
     } catch (e) {
@@ -100,10 +113,17 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   const zip = sink.finalize();
   overlay.setDone(zip, exportFilename(location.host, patient));
   log(`Done: ${zip.length} bytes zipped${patient ? ` for ${patient}` : ""}.`);
-  // "Ran but empty" looks like success — surface it and point at Debug.
-  if (!patient) {
+  if (ctx.signal.aborted) {
+    log(`⚠ You were LOGGED OUT during the export (at: ${ctx.signal.reason}). Data is incomplete.`);
+    log("   Click Debug (below) and send the report privately to Josh.");
+    finish("logged-out", ctx.signal.reason);
+  } else if (!patient) {
+    // "Ran but empty" looks like success — surface it and point at Debug.
     log("⚠ No patient data was found — this export looks EMPTY.");
     log("   Click Debug (below) to make a report and share it privately with Josh.");
+    finish("error", "no patient data");
+  } else {
+    finish("done");
   }
   return zip;
 }
@@ -118,12 +138,18 @@ globalThis.__mychartExport = { run };
 // Interactive path: show the overlay, but only reveal Start once we've
 // confirmed this is a signed-in MyChart page — so the wrong page never offers
 // a button that would just fail.
+// Capture any prior (possibly crashed) journal BEFORE we overwrite it, then
+// start this run's journal — so even the on-load detection probes are recorded.
+const prevJournal = previousJournal();
+startRun(location.host, derivePrefix(location.pathname));
+
 const overlay = ensureOverlay();
 overlay.onStart(() => {
   // run() sets its own error banner on a failed preflight; for anything else
   // that throws, surface it as an error state (not a stuck "Running…").
   void run().catch((e) => {
     const msg = e instanceof Error ? e.message : String(e);
+    finish("error", msg);
     if (!/isn't a signed-in MyChart page|signed out of MyChart/i.test(msg)) {
       overlay.setError(`Export failed: ${msg}`);
     }
@@ -131,6 +157,17 @@ overlay.onStart(() => {
 });
 // The Debug button works in any state — especially when detection fails.
 overlay.onDebug(() => collectDebugReport());
+
+// If a previous export in this tab didn't finish (it may have logged the user
+// out and reloaded the tab), offer its journal — the culprit request is in it.
+const crashed = crashedRun(prevJournal);
+if (crashed) {
+  const culprit = likelyCulprit(crashed);
+  overlay.recovery(
+    `A previous export here didn't finish${culprit ? ` — last request: ${culprit}` : ""}. It may have logged you out.`,
+    formatJournal(crashed),
+  );
+}
 
 void (async () => {
   const resolved = await resolveMyChart();
