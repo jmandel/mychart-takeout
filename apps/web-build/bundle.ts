@@ -1,6 +1,11 @@
 /**
  * Single-source browser bundle config — used by both the build CLI and the
- * integration test so they can never drift.
+ * e2e suites so they can never drift.
+ *
+ * The result is memoized per process. `bun test` runs every test file in ONE
+ * process, and building this entrypoint twice there makes the bundler emit
+ * some modules twice ("MAX has already been declared"), which fails the second
+ * build. One build per process is also simply faster.
  */
 import { join } from "node:path";
 
@@ -23,7 +28,13 @@ export function buildStamp(): string {
   return `${sha} ${new Date().toISOString().slice(0, 16)}Z`;
 }
 
-export async function buildBrowserBundle(): Promise<string> {
+let cached: Promise<string> | null = null;
+
+export function buildBrowserBundle(): Promise<string> {
+  return (cached ??= build());
+}
+
+async function build(): Promise<string> {
   const define = { __MCT_BUILD__: JSON.stringify(buildStamp()) };
   const attempt = async (format: "iife" | "esm") =>
     Bun.build({

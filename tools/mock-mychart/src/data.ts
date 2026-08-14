@@ -4,11 +4,104 @@
  */
 import { zipSync } from "../../../packages/browser/src/zip";
 
+/** The ONE token that authenticates this session's API calls. Classic builds
+ *  serve it from /Home/CSRFToken; "PX" builds only embed it in the page. */
 export const CSRF_TOKEN = "mock-csrf-token-1";
+
+/** The token embedded in the LOGIN page's HTML. Every Epic instance we have
+ *  looked at serves one there: it is shaped exactly like a session token and
+ *  authenticates nothing. Adopting it is the trap that turns "signed out" into
+ *  an export full of login pages. */
+export const LOGIN_PAGE_TOKEN = "mock-login-page-token-authenticates-nothing";
+
+/** A stale token that some pages carry BEFORE the live one (e.g. on a sign-out
+ *  form), so "the first __RequestVerificationToken in the DOM" is the wrong
+ *  one — and posting it is what trips the anti-CSRF session kill. */
+export const STALE_PAGE_TOKEN = "mock-stale-page-token-authenticates-nothing";
 
 export const CSRF_PAGE = `<!doctype html><html><body>
 <form><input name="__RequestVerificationToken" type="hidden" value="${CSRF_TOKEN}" /></form>
 </body></html>`;
+
+/** Padding so the login page is the ~100KB of markup a real portal serves —
+ *  big enough that "we got a big HTML page" is no evidence of being signed in. */
+const LOGIN_FILLER = Array.from(
+  { length: 340 },
+  (_, i) =>
+    `<div class="mc-login-panel" id="mc-panel-${i}"><h3 class="mc-panel-title">Synthetic panel ${i}</h3>` +
+    `<p class="mc-panel-body">Padding block ${i} of a mock sign-in page. A real portal ships roughly this ` +
+    `much boilerplate (menus, footers, accessibility text, marketing) around the sign-in form.</p></div>`,
+).join("\n");
+
+const attr = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+/**
+ * The sign-in page an unauthenticated request lands on. Contains a
+ * __RequestVerificationToken hidden input (the trap) AND an actual sign-in
+ * form, which is what distinguishes it from a real app page.
+ */
+export function loginPage(postLoginUrl: string): string {
+  return `<!doctype html><html><head><title>MyChart - Sign In</title></head><body>
+<form id="loginForm" method="post" action="Authentication/Login">
+<input name="__RequestVerificationToken" type="hidden" value="${LOGIN_PAGE_TOKEN}" />
+<input type="hidden" name="postloginurl" value="${attr(postLoginUrl)}" />
+<label for="Login">MyChart username</label>
+<input id="Login" name="Login" type="text" autocomplete="username" />
+<label for="Password">Password</label>
+<input id="Password" name="Password" type="password" autocomplete="current-password" />
+<button type="submit">Sign in</button>
+</form>
+${LOGIN_FILLER}
+</body></html>`;
+}
+
+/**
+ * An edge/WAF interstitial: HTML where JSON was expected, but NOT a login page
+ * (no sign-in form, no login URL). "Redirected to login" and "a robot check ate
+ * the API" are different failures and need different advice.
+ */
+export const WAF_CHALLENGE_PAGE = `<!doctype html><html><head><title>Checking your browser</title></head><body>
+<div id="challenge-running">One more step - we are verifying your request before it continues.</div>
+<noscript>Please enable JavaScript and refresh.</noscript>
+</body></html>`;
+
+/** Which instance-flavored markup to graft onto every served app page. */
+export interface PageChrome {
+  /** "PX" build: the live token is embedded in the page, plus PX globals. */
+  px?: boolean;
+  /** Put a STALE token in the markup BEFORE the live one. */
+  staleToken?: boolean;
+  /** Point asset/nav links at this prefix (e.g. a live alias of the real one). */
+  linkPrefix?: string;
+}
+
+/** Markup injected before </body> of every app page to imitate a variant. */
+export function pageChrome(v: PageChrome): string {
+  const parts: string[] = [];
+  if (v.linkPrefix !== undefined) {
+    parts.push(
+      `<link rel="stylesheet" href="${v.linkPrefix}/styles/mychart.css" />` +
+        `<script src="${v.linkPrefix}/scripts/app.js"></script>` +
+        `<a href="${v.linkPrefix}/Home">Home</a>`,
+    );
+  }
+  // Document order matters: the stale one must come first so a naive
+  // querySelector('input[name="__RequestVerificationToken"]') finds it.
+  if (v.staleToken) {
+    parts.push(
+      `<form id="signOutForm" method="post" action="Home/LogOut">` +
+        `<input name="__RequestVerificationToken" type="hidden" value="${STALE_PAGE_TOKEN}" /></form>`,
+    );
+  }
+  if (v.px) {
+    parts.push(
+      `<input name="__RequestVerificationToken" type="hidden" value="${CSRF_TOKEN}" />` +
+        `<script>self.EpicPx={build:"px",version:"mock"};` +
+        `self.webpackChunk_epic_px_sdk=self.webpackChunk_epic_px_sdk||[];</script>`,
+    );
+  }
+  return parts.join("");
+}
 
 // ---------------------------------------------------------------- structured
 export const healthSummary = {
