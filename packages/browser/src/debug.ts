@@ -1,5 +1,6 @@
 import { classifyOutcome } from "@mychart/core";
 import { candidatePrefixes, discoverPrefixes, pageToken, resolveMyChart } from "./detect";
+import { formatJournal, likelyCulprit, priorCrashedRun } from "./journal";
 
 /**
  * A debug report for when detection fails on someone's MyChart, meant to be
@@ -229,6 +230,14 @@ export async function collectDebugReport(): Promise<string> {
       pageTokenFound: pageToken() !== null, // newer Epic: token embedded in page
       resolved: resolved ? { prefix: resolved.prefix } : null,
     },
+    // A previous export in this tab that didn't finish (likely logged the user
+    // out and reloaded the tab). Its last live request is the likely culprit.
+    previousUnfinishedRun: (() => {
+      const prior = priorCrashedRun();
+      return prior
+        ? { status: prior.status, likelyCulprit: likelyCulprit(prior), journal: formatJournal(prior).split("\n") }
+        : null;
+    })(),
     csrfProbes: probes,
     dataProbes, // live calls to real endpoints (status/outcome/field-names only)
     signals: {

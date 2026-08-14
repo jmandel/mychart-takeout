@@ -46,13 +46,20 @@ function save(j: Journal): void {
 }
 
 let cur: Journal | null = null;
+let priorAtStart: Journal | null = null;
 
 /** Read the PREVIOUS journal (call before startRun overwrites it). */
 export function previousJournal(): Journal | null {
   return load();
 }
 
+/** The prior run captured at startRun, IF it looks like a crashed export. */
+export function priorCrashedRun(): Journal | null {
+  return crashedRun(priorAtStart);
+}
+
 export function startRun(host: string, prefix: string): void {
+  priorAtStart = load(); // stash the prior run before we overwrite it
   cur = {
     runId: `${host}-${new Date().toISOString()}`,
     host,

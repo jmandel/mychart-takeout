@@ -14,8 +14,6 @@ export interface Overlay {
   onStart(fn: () => void): void;
   /** Wire the "Debug" button: fn returns the report text to copy/download. */
   onDebug(fn: () => Promise<string>): void;
-  /** A previous run in this tab didn't finish — offer its journal to copy. */
-  recovery(summary: string, journalText: string): void;
   root: HTMLElement;
 }
 
@@ -153,21 +151,6 @@ export function ensureOverlay(): Overlay {
         "cursor:pointer;font:inherit;margin-left:auto;";
       dismiss.addEventListener("click", () => root.remove());
       bar.appendChild(dismiss);
-    },
-    recovery(summary: string, journalText: string) {
-      const banner = document.createElement("div");
-      banner.textContent = `⚠ ${summary}`;
-      banner.style.cssText =
-        "padding:8px 12px;background:#78350f;color:#fff;font-weight:600;white-space:pre-wrap;border-top:1px solid #92400e;";
-      root.insertBefore(banner, bar);
-      const btn = document.createElement("button");
-      btn.textContent = "Copy previous-run log";
-      btn.style.cssText =
-        "background:#b45309;color:#fff;border:0;border-radius:6px;padding:6px 12px;cursor:pointer;font:inherit;";
-      btn.addEventListener("click", () => {
-        void presentCopyable(journalText, "mychart-takeout-run-log.txt", "Previous-run log");
-      });
-      bar.insertBefore(btn, note);
     },
   };
   // Show `text` in a copyable box, try the clipboard, and add a Download button.

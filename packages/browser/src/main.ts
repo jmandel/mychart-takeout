@@ -14,12 +14,10 @@ import { resolveMyChart } from "./detect";
 import { FetchDom } from "./fetchDom";
 import { exportFilename } from "./filename";
 import {
-  crashedRun,
   finish,
-  formatJournal,
   likelyCulprit,
   markExportStarted,
-  previousJournal,
+  priorCrashedRun,
   startRun,
   step,
 } from "./journal";
@@ -138,9 +136,9 @@ globalThis.__mychartExport = { run };
 // Interactive path: show the overlay, but only reveal Start once we've
 // confirmed this is a signed-in MyChart page — so the wrong page never offers
 // a button that would just fail.
-// Capture any prior (possibly crashed) journal BEFORE we overwrite it, then
-// start this run's journal — so even the on-load detection probes are recorded.
-const prevJournal = previousJournal();
+// Start this run's journal (startRun stashes any prior crashed run first) — so
+// even the on-load detection probes are recorded, and a previous unfinished run
+// is available to the Debug report.
 startRun(location.host, derivePrefix(location.pathname));
 
 const overlay = ensureOverlay();
@@ -159,14 +157,17 @@ overlay.onStart(() => {
 overlay.onDebug(() => collectDebugReport());
 
 // If a previous export in this tab didn't finish (it may have logged the user
-// out and reloaded the tab), offer its journal — the culprit request is in it.
-const crashed = crashedRun(prevJournal);
+// out and reloaded the tab), point them at Debug — the report includes that
+// run's journal, whose last live request is the likely culprit. (No "recovery":
+// these failures repeat, so restarting is as good as resuming, and Start is
+// still there to try again.)
+const crashed = priorCrashedRun();
 if (crashed) {
   const culprit = likelyCulprit(crashed);
-  overlay.recovery(
-    `A previous export here didn't finish${culprit ? ` — last request: ${culprit}` : ""}. It may have logged you out.`,
-    formatJournal(crashed),
+  overlay.log(
+    `⚠ A previous export here didn't finish${culprit ? ` (last request: ${culprit})` : ""} — it may have logged you out.`,
   );
+  overlay.log("   Click Debug to capture what happened (and Start to try again).");
 }
 
 void (async () => {
