@@ -171,10 +171,6 @@ export function ensureOverlay(): Overlay {
   );
   const logBox = el("div", "padding:8px 12px;overflow-y:auto;white-space:pre-wrap;font-size:11px;opacity:.8;");
   drawer.appendChild(logBox);
-  // One report pane at most — a re-collected report REPLACES the previous one
-  // (multiple stacked panes read as chaos), and its ✕ clears it entirely.
-  const reportBox = el("div", "display:flex;flex-direction:column;");
-  drawer.appendChild(reportBox);
   root.appendChild(drawer);
   shadow.appendChild(root);
   document.body.appendChild(host);
@@ -194,9 +190,12 @@ export function ensureOverlay(): Overlay {
   // ---- state rendering
   let state = "";
   let busyLine: HTMLElement | null = null;
+  /** Stashed state while the report view temporarily takes over the panel. */
+  let reportPrev: { state: string; nodes: HTMLElement[]; busyLine: HTMLElement | null } | null = null;
   const render = (name: string, ...children: HTMLElement[]): void => {
     state = name;
     busyLine = null;
+    reportPrev = null; // any real state change dismisses an open report view
     content.replaceChildren(...children);
   };
   const statusLine = (text: string, color = T.mut): HTMLElement =>
@@ -211,29 +210,43 @@ export function ensureOverlay(): Overlay {
     return row;
   };
 
-  // Show `text` in a copyable box inside the drawer (replacing any previous
-  // report — only the latest is ever shown), try the clipboard, offer download.
-  async function presentCopyable(text: string, filename: string, kindLabel: string): Promise<void> {
-    setDrawer(true);
-    const header = el("div", "display:flex;align-items:center;gap:8px;padding:6px 12px 0;");
-    header.appendChild(el("span", `color:${T.dim};font-size:11px;flex:1;`, kindLabel));
-    const clear = el(
-      "button",
-      `background:transparent;color:${T.mut};border:0;font:inherit;font-size:12px;cursor:pointer;padding:0 2px;`,
-      "✕",
-    );
-    clear.title = `Clear this ${kindLabel.toLowerCase()}`;
-    clear.addEventListener("click", () => reportBox.replaceChildren());
-    header.appendChild(clear);
+  // The report takes over the whole panel as its own view (a report is a
+  // document, not a log line — cramming it into the drawer under another state
+  // was unreadable). Back restores exactly what was showing before; collecting
+  // again replaces the view, so there is only ever one report.
+  async function presentReport(text: string, filename: string, kindLabel: string): Promise<void> {
+    if (!reportPrev) {
+      reportPrev = { state, nodes: [...content.children] as HTMLElement[], busyLine };
+    }
+    state = "report";
+    busyLine = null;
+    const head = el("div", "display:flex;align-items:center;gap:8px;");
+    head.appendChild(el("span", `font-weight:700;flex:1;`, kindLabel));
     const ta = el(
       "textarea",
-      `height:110px;margin:4px 12px 8px;background:#0b1220;color:#cbd5e1;border:1px solid ${T.line};` +
-        `border-radius:6px;font:11px/1.4 ui-monospace,Menlo,monospace;box-sizing:border-box;padding:6px;width:calc(100% - 24px);`,
+      `flex:1;min-height:180px;background:#0b1220;color:#cbd5e1;border:1px solid ${T.line};` +
+        `border-radius:6px;font:11px/1.4 ui-monospace,Menlo,monospace;box-sizing:border-box;padding:6px;width:100%;resize:none;`,
     ) as HTMLTextAreaElement;
     ta.readOnly = true;
     ta.value = text;
-    const dl = button(`Download ${filename}`, T.accent);
-    dl.style.margin = "0 12px 10px";
+    const note = el(
+      "div",
+      `color:${T.dim};font-size:11px;`,
+      "May include identifying details — review it, then share it PRIVATELY with Josh (please don't post it publicly).",
+    );
+    const row = el("div", "display:flex;gap:8px;align-items:center;");
+    const copy = button("Copy", T.accent);
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(text);
+        copy.textContent = "Copied ✓";
+        setTimeout(() => (copy.textContent = "Copy"), 1500);
+      } catch {
+        ta.focus();
+        ta.select();
+      }
+    });
+    const dl = button("Download", T.line, T.ink);
     dl.addEventListener("click", () => {
       const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
       const a = document.createElement("a");
@@ -242,20 +255,27 @@ export function ensureOverlay(): Overlay {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     });
-    reportBox.replaceChildren(header, ta, dl);
-    ta.focus();
-    ta.select();
-    let copied = false;
+    const back = button("Back", T.line, T.ink);
+    back.addEventListener("click", () => {
+      const prev = reportPrev;
+      reportPrev = null;
+      if (prev) {
+        state = prev.state;
+        busyLine = prev.busyLine;
+        content.replaceChildren(...prev.nodes);
+      }
+    });
+    row.appendChild(copy);
+    row.appendChild(dl);
+    row.appendChild(back);
+    content.replaceChildren(head, ta, note, row);
     try {
       await navigator.clipboard.writeText(text);
-      copied = true;
+      copy.textContent = "Copied ✓";
+      setTimeout(() => (copy.textContent = "Copy"), 1500);
     } catch {
-      /* clipboard may be blocked; the textarea is selected as a fallback */
+      /* clipboard may be blocked; the Copy button and textarea remain */
     }
-    overlay.log(
-      (copied ? `${kindLabel} copied to your clipboard.` : `${kindLabel} ready — copy it from the box above.`) +
-        " Review it, then share it PRIVATELY with Josh (it may include identifying details — please don't post it publicly).",
-    );
   }
 
   let debugFn: (() => Promise<string>) | null = null;
@@ -269,7 +289,7 @@ export function ensureOverlay(): Overlay {
     } catch (e) {
       text = `debug report failed: ${e}`;
     }
-    await presentCopyable(text, "mychart-takeout-debug.txt", "Debug report");
+    await presentReport(text, "mychart-takeout-debug.txt", "Debug report");
     debugBtn.textContent = "Debug";
     debugBtn.disabled = false;
   });
@@ -306,6 +326,12 @@ export function ensureOverlay(): Overlay {
     setBusy(status: string) {
       if (state === "busy" && busyLine) {
         busyLine.textContent = status;
+        return;
+      }
+      // A run progressing underneath an open report view updates the stashed
+      // status line instead of tearing the report down mid-read.
+      if (state === "report" && reportPrev?.state === "busy" && reportPrev.busyLine) {
+        reportPrev.busyLine.textContent = status;
         return;
       }
       const line = statusLine(status, T.ink);
