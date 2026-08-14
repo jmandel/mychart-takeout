@@ -5,7 +5,6 @@ export type { CdpEvents } from "./rawcdp";
 export { CdpPage } from "./page";
 export { CdpClient } from "./client";
 export type { EvalPage } from "./client";
-export { makeDomAccess } from "./dom";
 export { NetLogger, extFor, shouldSave, MAX_BODY } from "./netlog";
 export type { ResponseInfo } from "./netlog";
 export { FsSink, loadExportDirIntoStore } from "./fsSink";

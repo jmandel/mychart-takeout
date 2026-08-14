@@ -2,7 +2,7 @@ import { classifyOutcome } from "./gaps";
 import { makeRunHealth, Mc, type RunHealth } from "./mc";
 import { ExportStore } from "./store";
 import { randomNonce } from "./util";
-import type { DomAccess, ManifestEntry, McResponse, MyChartClient, Sink } from "./types";
+import type { ManifestEntry, McResponse, MyChartClient, Sink } from "./types";
 
 /** What rec() accepts: a real response (classified) or a synthetic summary row. */
 type RecResponse =
@@ -44,9 +44,6 @@ export interface PhaseCtx {
   observedApiPaths?: () => string[];
   /** Documents the user chose to skip (census/selection flow) — by dcsID. */
   excludeDocIds?: ReadonlySet<string>;
-  /** Page access for link harvesting (test-results eorderid fallback).
-   *  Absent when the environment can't render pages; the fallback degrades. */
-  dom?: DomAccess;
 }
 
 export interface MakeCtxOpts {
@@ -54,7 +51,6 @@ export interface MakeCtxOpts {
   sink: Sink;
   nonce?: string;
   timeZone?: string;
-  dom?: DomAccess;
   log?: (msg: string) => void;
   /** Detection-verified token to seed Mc with (skip an unverified refetch). */
   initialToken?: string | null;
@@ -102,6 +98,5 @@ export function makeCtx(opts: MakeCtxOpts): PhaseCtx {
     },
     log,
     wait: (ms) => new Promise((r) => setTimeout(r, ms)),
-    dom: opts.dom,
   };
 }

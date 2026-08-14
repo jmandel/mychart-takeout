@@ -1,14 +1,7 @@
-/** Test doubles for phase unit tests: FakeClient, MemorySink, FakeDom, ctx. */
+/** Test doubles for phase unit tests: FakeClient, MemorySink, ctx. */
 import { makeCtx, type PhaseCtx } from "../../src/ctx";
 import { isRecord } from "../../src/util";
-import type {
-  DomAccess,
-  FetchInit,
-  McResponse,
-  MyChartClient,
-  SectionPage,
-  Sink,
-} from "../../src/types";
+import type { FetchInit, McResponse, MyChartClient, Sink } from "../../src/types";
 
 export class MemorySink implements Sink {
   files = new Map<string, string | Uint8Array>();
@@ -98,41 +91,13 @@ export function bodyOf(init: FetchInit): Record<string, unknown> {
   }
 }
 
-export interface FakeSection {
-  html?: string;
-  text?: string;
-  hrefs?: (string | null)[];
-}
-
-export class FakeDom implements DomAccess {
-  visited: string[] = [];
-  constructor(private pages: Record<string, FakeSection> = {}) {}
-  async withSection<T>(
-    path: string,
-    _settleMs: number,
-    fn: (page: SectionPage) => Promise<T>,
-  ): Promise<T> {
-    this.visited.push(path);
-    const pg = this.pages[path] ?? {};
-    const page: SectionPage = {
-      html: async () => pg.html ?? "<html></html>",
-      text: async () => pg.text ?? "",
-      hrefs: async () => pg.hrefs ?? [],
-    };
-    return fn(page);
-  }
-}
-
 export interface TestCtx {
   ctx: PhaseCtx;
   sink: MemorySink;
   logs: string[];
 }
 
-export function makeTestCtx(
-  client: FakeClient,
-  opts: { dom?: DomAccess; nonce?: string } = {},
-): TestCtx {
+export function makeTestCtx(client: FakeClient, opts: { nonce?: string } = {}): TestCtx {
   const sink = new MemorySink();
   const logs: string[] = [];
   const ctx = makeCtx({
@@ -140,7 +105,6 @@ export function makeTestCtx(
     sink,
     nonce: opts.nonce ?? "deadbeef",
     timeZone: "UTC",
-    dom: opts.dom,
     log: (m) => logs.push(m),
   });
   ctx.wait = async () => {}; // instant polling in tests

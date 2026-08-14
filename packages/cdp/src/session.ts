@@ -1,6 +1,4 @@
-import type { DomAccess } from "@mychart/core";
 import { CdpClient } from "./client";
-import { makeDomAccess } from "./dom";
 import { NetLogger } from "./netlog";
 import { CdpPage } from "./page";
 import { CdpConnection } from "./rawcdp";
@@ -100,10 +98,6 @@ export class CdpSession {
 
   client(): CdpClient {
     return new CdpClient(this.page, this.origin, this.prefix);
-  }
-
-  domAccess(): DomAccess {
-    return makeDomAccess(this.page, this.origin, this.prefix);
   }
 
   /** Disconnects the CDP websocket; does NOT kill the user's browser. */

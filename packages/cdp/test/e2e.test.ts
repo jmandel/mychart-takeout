@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Subprocess } from "bun";
-import { buildReport, makeCtx, phases, type DomAccess, type PhaseCtx } from "@mychart/core";
+import { buildReport, makeCtx, phases, type PhaseCtx } from "@mychart/core";
 import { findChromium } from "../../../tools/mock-mychart/src/chromium";
 import { startMockMyChart, type MockServer } from "../../../tools/mock-mychart/src/server";
 
@@ -77,13 +77,6 @@ async function waitForMyChartTab(httpEndpoint: string): Promise<void> {
   throw new Error("mock MyChart tab never appeared");
 }
 
-/** Cap section settle waits so 19 dom-phase pages don't take a minute. */
-function capSettle(inner: DomAccess, capMs: number): DomAccess {
-  return {
-    withSection: (path, settleMs, fn) => inner.withSection(path, Math.min(settleMs, capMs), fn),
-  };
-}
-
 beforeAll(async () => {
   if (!CHROMIUM) return; // no browser (e.g. CI without Chrome) — the suite is skipped
   mock = startMockMyChart({});
@@ -98,7 +91,6 @@ beforeAll(async () => {
   ctx = makeCtx({
     client: session.client(),
     sink: new FsSink(outDir),
-    dom: capSettle(session.domAccess(), 100),
     timeZone: "UTC",
     log: () => {},
   });
@@ -145,7 +137,7 @@ describe.skipIf(!CHROMIUM)("raw-CDP end-to-end export against mock MyChart", () 
     expect(existsSync(join(outDir, "structured/care-team/Clinical__CareTeam__Load.json"))).toBe(true);
   });
 
-  test("test-results details harvested via real navigation", () => {
+  test("test-results details keyed from the list payload", () => {
     expect(existsSync(join(outDir, "structured/test-results/GetList.json"))).toBe(true);
     const details = readdirSync(join(outDir, "structured/test-results/details")).sort();
     expect(details.length).toBeGreaterThanOrEqual(2);

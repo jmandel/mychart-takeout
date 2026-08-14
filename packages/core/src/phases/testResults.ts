@@ -29,25 +29,6 @@ function eorderidsFromList(getList: unknown): string[] {
   return eids;
 }
 
-/**
- * eorderids from the rendered app page's detail links — the legacy source,
- * kept as a fallback. Not used in browser (bookmarklet) mode: loading the
- * `app/*` SPA in a frame trips Epic's anti-framing logout, and DomAccess
- * there fetches an inert shell that has no rendered links anyway.
- */
-async function eorderidsFromDom(ctx: PhaseCtx): Promise<string[]> {
-  if (!ctx.dom) return [];
-  const hrefs = await ctx.dom.withSection("app/test-results", 3500, (page) =>
-    page.hrefs('a.ResultDetailsLink, a[href*="test-results/details"]'),
-  );
-  const eids: string[] = [];
-  for (const h of hrefs ?? []) {
-    const m = /eorderid=([^&]+)/.exec(h ?? "");
-    if (m && !eids.includes(m[1]!)) eids.push(m[1]!);
-  }
-  return eids;
-}
-
 /** phase_test_results: full list + per-order details keyed by eorderid. */
 export async function testResults(ctx: PhaseCtx): Promise<void> {
   ctx.log("\n== test results: list + per-order details ==");
@@ -60,16 +41,11 @@ export async function testResults(ctx: PhaseCtx): Promise<void> {
     await ctx.store.saveJson("structured/test-results/GetList.json", r.json);
   }
   ctx.rec("test-results", "GetList", r); // always — a failed list must show up in gaps
-  // Prefer keys straight from the list payload — no page load, works in every
-  // mode. Fall back to the rendered page only if the payload yielded nothing.
-  let eids = eorderidsFromList(r.json);
-  let source = "list";
-  if (eids.length === 0) {
-    eids = await eorderidsFromDom(ctx);
-    source = "dom";
-  }
+  // Keys come straight from the list payload (newResultGroups[].key on every
+  // instance seen so far) — no page load, works identically in every mode.
+  const eids = eorderidsFromList(r.json);
   await ctx.store.saveJson("structured/test-results/_detail_links.json", eids);
-  ctx.log(`  detail links: ${eids.length} (from ${source})`);
+  ctx.log(`  detail links: ${eids.length}`);
   if (eids.length === 0) {
     // Distinguish "the list answered but its shape hid the keys" (an exporter
     // gap worth reporting upstream) from "the list itself failed".
@@ -79,8 +55,8 @@ export async function testResults(ctx: PhaseCtx): Promise<void> {
       "GetDetails",
       null,
       answered
-        ? `no eorderids in GetList payload (top keys: ${topKeys(r.json)}); dom fallback empty`
-        : "no eorderids found (list + dom empty)",
+        ? `no eorderids in GetList payload (top keys: ${topKeys(r.json)})`
+        : "no eorderids found (list empty/failed)",
       answered ? { outcome: "shape-mismatch" } : {},
     );
     return;

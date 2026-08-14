@@ -2,8 +2,8 @@
  * Mock MyChart instance (synthetic data only) — CI target for the core phases
  * and the in-browser bundle. Serves the same route shapes the real portal
  * does: CSRF page, api/* JSON POSTs (token-checked), classic form/nobody
- * endpoints, paginated visit lists, report content, C-CDA download, and HTML
- * section pages for iframe/dom snapshots.
+ * endpoints, paginated visit lists, report content, document downloads, and
+ * the C-CDA package.
  *
  * It also impersonates the HOSTILE instances we hit in the field, via config
  * (see MockOpts): the login-token trap, the "PX" build whose token only lives
@@ -37,7 +37,6 @@ import {
   sectionPage,
   simpleJson,
   testResultDetails,
-  testResultsAppPage,
   testResultsList,
   visitNotes,
 } from "./data";
@@ -216,7 +215,6 @@ export function startMockMyChart(opts: MockOpts = {}): MockServer {
         return opts.px ? bounce(url) : html(CSRF_PAGE);
       }
       if (path === "" || path === "Home") return page(sectionPage("home"));
-      if (path === "app/test-results") return page(testResultsAppPage);
       if (/^(scripts|styles|images|bundles|fonts)\//.test(path)) {
         const css = path.endsWith(".css");
         return new Response(css ? "/* mock */" : "/* mock */\n", {

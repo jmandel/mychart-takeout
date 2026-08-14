@@ -75,21 +75,3 @@ export interface ManifestEntry {
   [extra: string]: unknown;
 }
 
-/**
- * A rendered app page, used for link harvesting (test-results eorderid
- * fallback). CDP mode: real navigation in the attached tab.
- */
-export interface SectionPage {
-  html(): Promise<string>;
-  text(): Promise<string>;
-  /** getAttribute('href') of every element matching a CSS selector. */
-  hrefs(selector: string): Promise<(string | null)[]>;
-}
-
-export interface DomAccess {
-  withSection<T>(
-    path: string,
-    settleMs: number,
-    fn: (page: SectionPage) => Promise<T>,
-  ): Promise<T>;
-}

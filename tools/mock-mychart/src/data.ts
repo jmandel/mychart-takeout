@@ -258,13 +258,6 @@ export const testResultDetails: Record<string, unknown> = {
   },
 };
 
-export const testResultsAppPage = `<!doctype html><html><head><title>Test Results</title></head><body>
-<div id="mock-section">test-results</div>
-<a class="ResultDetailsLink" href="test-results/details?eorderid=EO1">CBC With Differential</a>
-<a class="ResultDetailsLink" href="test-results/details?eorderid=EO2&amp;source=1">MRI Brain</a>
-<a class="ResultDetailsLink" href="test-results/details?eorderid=EO1">CBC (duplicate link)</a>
-</body></html>`;
-
 // ---------------------------------------------------------------- visits
 export const loadUpcoming = {
   Appointments: [

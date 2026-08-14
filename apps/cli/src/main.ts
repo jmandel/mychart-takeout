@@ -82,7 +82,6 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
   const ctx: PhaseCtx = makeCtx({
     client: session.client(),
     sink: new FsSink(outDir),
-    dom: session.domAccess(),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
   const phaseTimings: { phase: string; ms: number; abortedDuring: boolean }[] = [];
