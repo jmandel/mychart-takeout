@@ -79,7 +79,10 @@ documents/other/              downloaded document CONTENT (not just the list):
   NN_<desc>_detail.json         per-document metadata + detail response
 documents/ccda/               (if --ccda) standards C-CDA all-visits package
   HealthSummary_all_visits_CCDA.zip + extracted/  one ClinicalDocument per visit
-dom/                          per-section page HTML/text snapshots (if enabled)
+dom/                          per-section page HTML/text snapshots (if enabled);
+                              pages that render as empty app-shell boilerplate
+                              are skipped, so only pages with real content
+                              appear (billing lives ONLY here — no JSON API)
 raw_network/                  (CDP exports only) raw response log + bodies
 ```
 

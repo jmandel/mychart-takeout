@@ -36,12 +36,13 @@ export interface ReadyActions {
   onScanFirst(): void;
 }
 
-/** What the user picked on the selection card. */
+/** What the user picked on the selection card. (Page snapshots aren't offered:
+ *  the dom phase now self-trims to the few pages with real content, so there's
+ *  no meaningful size to opt out of — one less checkbox.) */
 export interface Selection {
   clinical: boolean;
   messages: boolean;
   documents: boolean;
-  dom: boolean;
   excludeDocIds: string[];
 }
 
@@ -170,6 +171,10 @@ export function ensureOverlay(): Overlay {
   );
   const logBox = el("div", "padding:8px 12px;overflow-y:auto;white-space:pre-wrap;font-size:11px;opacity:.8;");
   drawer.appendChild(logBox);
+  // One report pane at most — a re-collected report REPLACES the previous one
+  // (multiple stacked panes read as chaos), and its ✕ clears it entirely.
+  const reportBox = el("div", "display:flex;flex-direction:column;");
+  drawer.appendChild(reportBox);
   root.appendChild(drawer);
   shadow.appendChild(root);
   document.body.appendChild(host);
@@ -206,17 +211,38 @@ export function ensureOverlay(): Overlay {
     return row;
   };
 
-  // Show `text` in a copyable box inside the drawer, try the clipboard, offer download.
+  // Show `text` in a copyable box inside the drawer (replacing any previous
+  // report — only the latest is ever shown), try the clipboard, offer download.
   async function presentCopyable(text: string, filename: string, kindLabel: string): Promise<void> {
     setDrawer(true);
+    const header = el("div", "display:flex;align-items:center;gap:8px;padding:6px 12px 0;");
+    header.appendChild(el("span", `color:${T.dim};font-size:11px;flex:1;`, kindLabel));
+    const clear = el(
+      "button",
+      `background:transparent;color:${T.mut};border:0;font:inherit;font-size:12px;cursor:pointer;padding:0 2px;`,
+      "✕",
+    );
+    clear.title = `Clear this ${kindLabel.toLowerCase()}`;
+    clear.addEventListener("click", () => reportBox.replaceChildren());
+    header.appendChild(clear);
     const ta = el(
       "textarea",
-      `width:100%;height:110px;margin:6px 12px 10px;background:#0b1220;color:#cbd5e1;border:1px solid ${T.line};` +
+      `height:110px;margin:4px 12px 8px;background:#0b1220;color:#cbd5e1;border:1px solid ${T.line};` +
         `border-radius:6px;font:11px/1.4 ui-monospace,Menlo,monospace;box-sizing:border-box;padding:6px;width:calc(100% - 24px);`,
     ) as HTMLTextAreaElement;
     ta.readOnly = true;
     ta.value = text;
-    drawer.appendChild(ta);
+    const dl = button(`Download ${filename}`, T.accent);
+    dl.style.margin = "0 12px 10px";
+    dl.addEventListener("click", () => {
+      const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    });
+    reportBox.replaceChildren(header, ta, dl);
     ta.focus();
     ta.select();
     let copied = false;
@@ -230,17 +256,6 @@ export function ensureOverlay(): Overlay {
       (copied ? `${kindLabel} copied to your clipboard.` : `${kindLabel} ready — copy it from the box above.`) +
         " Review it, then share it PRIVATELY with Josh (it may include identifying details — please don't post it publicly).",
     );
-    const dl = button(`Download ${filename}`, T.accent);
-    dl.style.margin = "0 12px 10px";
-    dl.addEventListener("click", () => {
-      const url = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    });
-    drawer.appendChild(dl);
   }
 
   let debugFn: (() => Promise<string>) | null = null;
@@ -333,7 +348,6 @@ export function ensureOverlay(): Overlay {
         );
         docChecks.push({ dcsId: d.dcsId, el: cb });
       }
-      boxes.push({ key: "dom", el: row("Page snapshots", "rendered section pages (HTML)") });
       docsCb.addEventListener("change", () => {
         for (const c of docChecks) c.el.disabled = !docsCb.checked;
       });
@@ -344,7 +358,6 @@ export function ensureOverlay(): Overlay {
           clinical: true,
           messages: true,
           documents: true,
-          dom: true,
           excludeDocIds: [],
         };
         for (const b of boxes) sel[b.key] = b.el.checked;

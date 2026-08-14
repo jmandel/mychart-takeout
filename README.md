@@ -111,7 +111,8 @@ structured/                  structured JSON per domain (source of truth)
   messages/threads_full/       per-thread JSON + per-message HTML bodies
   _captured_from_navigation/   best JSON body per endpoint (provenance)
 documents/other/             downloaded document content (PDF/TIFF/HTML) + metadata
-dom/                         per-page rendered HTML + text (if enabled)
+dom/                         per-page rendered HTML + text (if enabled; pages
+                             that are only app-shell boilerplate are skipped)
 screenshots/                 full-page PNGs (only if --screenshots)
 raw_network/                 raw response log + bodies (only if raw capture on)
 documents/ccda/              standards C-CDA export (only if --ccda)

@@ -269,7 +269,6 @@ async function scanFirst(): Promise<void> {
           clinical: sel.clinical,
           messages: sel.messages,
           documents: sel.documents,
-          dom: sel.dom,
         },
         excludeDocIds: sel.excludeDocIds,
         docListJson: census.listJson,
