@@ -33,9 +33,16 @@ and cite the file path.
 ```
 PATIENT_SUMMARY.md / .json    consolidated overview (derived)
 indexes/*.csv                 flat tables (derived)
-MANIFEST.json                 file + record counts for this export
+MANIFEST.json                 file + record counts, total_bytes, bytes_by_top_dir,
+                              and largest_files — if the export seems huge, this
+                              says which files dominate (often one document scan)
 GAPS.md / gaps.json           what was and WASN'T captured (read this — see below)
 _manifest.json                per-endpoint outcome log
+_diagnostics/                 how THIS run went (no clinical content):
+  run.json                    exporter build stamp, how sign-in was verified,
+                              per-phase timings, observed traffic shape, and a
+                              stop reason if the run ended early
+  journal.txt                 request-by-request log (method + path + status)
 structured/                   SOURCE OF TRUTH — raw JSON per domain, e.g.:
   health-summary/ allergies/ immunizations/ health-issues/ medications/
   medications-ext/ histories/ goals/ personal-info/ insurance/ care-team/
@@ -86,6 +93,18 @@ Each run classifies every endpoint call. `GAPS.md` lists anything that failed
 or was unavailable on this person's instance. If a data type looks missing,
 check `GAPS.md` first — the portal may not offer that feature here, which is
 different from "the person has none." Absence in the export ≠ absence in care.
+
+Two things to watch for there:
+- A **"Run stopped early"** banner means the session died or the exporter's
+  circuit breaker / time budget halted the run — everything after that point is
+  missing for that reason, not because the person lacks the data. A **Skipped**
+  section lists the endpoints never attempted.
+- Outcomes distinguish *why* a call yielded nothing: `redirect-login` (session
+  lapsed), `waf-challenge` (a security wall answered), `timeout`/`network-error`,
+  `shape-mismatch` (the endpoint answered but not in the form the exporter
+  expected — the note names the payload's top-level keys), and a
+  `substituted-path` note (the data was recovered from an alternate URL the
+  portal itself uses).
 
 ## Provenance: this record may combine multiple health systems
 

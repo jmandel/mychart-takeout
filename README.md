@@ -65,7 +65,8 @@ in the `--out` dir — start with its `PATIENT_SUMMARY.md` and `README.md`.
 `export` flags: `--out DIR` · `--ccda` (standards C-CDA) · `--screenshots`
 (PNGs, off by default) · `--no-dom` (skip page HTML/text snapshots) ·
 `--no-raw` (don't keep raw bodies) · `--only PHASE` (one of: structured,
-test-results, visits, messages, flowsheets, ccda, dom, salvage, report).
+test-results, visits, messages, flowsheets, access-log, documents, ccda, dom,
+salvage, report).
 
 ## What it captures
 
@@ -73,7 +74,13 @@ test-results, visits, messages, flowsheets, ccda, dom, salvage, report).
   (incl. external), immunizations, medical/surgical/family/social history,
   goals, care team, preventive care, insurance/coverage, demographics &
   contact info, letters, questionnaires, upcoming orders, item feed, COVID
-  status, patient-tracked flowsheets (all readings, paginated).
+  status, patient-tracked flowsheets (all readings, paginated), implanted
+  devices (UDI/model/serial), care to-dos, linked organizations, record-sharing
+  posture, communication preferences, account security settings, and the
+  **access log** (who viewed the record, incl. third-party apps; paginated).
+- **Documents — content, not just the list**: insurance-card scans, consent
+  e-signatures, outside-provider records (PDF/TIFF/HTML) under
+  `documents/other/`. Often data that exists in no structured field or C-CDA.
 - **Test & imaging results**: full list plus per-order details — component
   values, units, reference ranges, abnormal flags, radiology/pathology
   narratives.
@@ -95,12 +102,15 @@ test-results, visits, messages, flowsheets, ccda, dom, salvage, report).
 ```
 PATIENT_SUMMARY.md / .json   consolidated summary
 indexes/*.csv                flat spreadsheets
-MANIFEST.json                file + record counts
+MANIFEST.json                file/record counts + size accounting (largest files)
+GAPS.md / gaps.json          per-endpoint outcomes: what wasn't captured and why
+_diagnostics/                run journal, build stamp, detection ladder, timings
 structured/                  structured JSON per domain (source of truth)
   test-results/details/        per-order values, ranges, narratives
   visits/avs|notes/            After-Visit Summaries + clinical notes (HTML)
   messages/threads_full/       per-thread JSON + per-message HTML bodies
   _captured_from_navigation/   best JSON body per endpoint (provenance)
+documents/other/             downloaded document content (PDF/TIFF/HTML) + metadata
 dom/                         per-page rendered HTML + text (if enabled)
 screenshots/                 full-page PNGs (only if --screenshots)
 raw_network/                 raw response log + bodies (only if raw capture on)
@@ -128,10 +138,14 @@ export*/               output — PHI, git-ignored, stays local
 ## Development & testing
 
 ```bash
-bun test          # 110 tests: unit + golden + an end-to-end run in real
-                  # headless Chromium against tools/mock-mychart (no PHI)
+bun test          # unit + golden + three end-to-end suites in real headless
+                  # Chromium against tools/mock-mychart (no PHI) — including a
+                  # detection-acceptance suite on HOSTILE mock variants: PX
+                  # builds, login-token traps, prefix aliases, anti-CSRF
+                  # session-kill, WAF challenges
 bunx tsc --noEmit # strict typecheck
 bun run build:web # bundle size-budgeted console/bookmarklet artifacts
+bun run gen:skill # after editing export-skill/SKILL.md (embeds it in core)
 ```
 
 Parity provenance (P5, 2026-08-13): the TS exporter and the original
@@ -151,11 +165,17 @@ fixture trees. The Python was then deleted (git history keeps it).
 - **EHI computer-readable export** is disabled on some instances (redirects to
   Home). On instances that enable it, it is the deepest export
   tier and worth adding as a phase.
-- Endpoint paths/payloads were discovered on one instance running one Epic
-  version. Other instances vary in path prefix (`/MyChart`, `/MyChart-PRD`,
-  …), enabled features, and payload shapes; the plan's robustness phase
-  covers deriving the base from the page, classifying per-endpoint outcomes,
-  and emitting a **gaps report** instead of failing.
+- Endpoint paths/payloads were discovered on a handful of instances across
+  Epic versions. Other instances vary in path prefix (`/MyChart`,
+  `/MyChartPRD`, aliases with redirect chains), enabled features, and payload
+  shapes. The exporter handles this by design: detection is a
+  **verify-before-trust ladder** (candidate prefix/token pairs are confirmed
+  by a real API call before anything is trusted — a wrong-token POST can trip
+  Epic's anti-CSRF defense and kill the session, so the page-load check is
+  GET-only and verification waits for the explicit Start click), moved
+  endpoints retry at the path the app itself was observed calling, failures
+  feed a circuit breaker instead of stacking timeouts, and every run emits a
+  **gaps report** plus a `_diagnostics/` bundle instead of failing silently.
 
 ## PHI safety
 
