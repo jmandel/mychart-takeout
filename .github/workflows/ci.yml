@@ -17,7 +17,8 @@ jobs:
       - name: Typecheck
         run: bunx tsc --noEmit
       - name: Test
-        # Unit + golden tests. The two headless-Chromium e2e suites auto-skip
-        # when no browser is present (findChromium() → null), keeping CI fast
-        # and deterministic; they run locally where a browser is available.
+        # Unit + golden tests. The three headless-Chromium e2e suites (CDP,
+        # browser bundle, detection acceptance) auto-skip when no browser is
+        # present (findChromium() → null), keeping CI fast and deterministic;
+        # they run locally where a browser is available.
         run: bun test
