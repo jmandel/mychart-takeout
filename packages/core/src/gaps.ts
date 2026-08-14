@@ -1,3 +1,4 @@
+import { looksLikeLoginPage } from "./mc";
 import type { ManifestEntry } from "./types";
 import { isRecord } from "./util";
 
@@ -102,6 +103,9 @@ export function classifyOutcome(res: {
   const body = res.body ?? "";
   const ct = (res.contentType ?? "").toLowerCase();
   const isHtml = ct.includes("html") || /^\s*(<!doctype html|<html)/i.test(body.slice(0, 200));
+  // Some instances REWRITE to the login page (200, unchanged URL) instead of
+  // redirecting — catch that by content, same bucket as the redirect.
+  if (isHtml && looksLikeLoginPage(body)) return "redirect-login";
   if (isHtml && looksLikeWafChallenge(body)) return "waf-challenge";
   if (s === 401 || s === 403) return "forbidden";
   if (s === 404) return "not-found";

@@ -19,7 +19,7 @@
  * a hard budget on verification POSTs. Every rung is recorded for the debug
  * report, so a failed detection shows its whole decision tree.
  */
-import { isLoggedOutUrl } from "@mychart/core";
+import { isLoggedOutUrl, looksLikeLoginPage } from "@mychart/core";
 import { derivePrefix } from "./client";
 import { step } from "./journal";
 
@@ -94,10 +94,12 @@ export async function tokenAt(prefix: string): Promise<string | null> {
     const r = await fetch(`${location.origin}${prefix}/Home/CSRFToken`, { credentials: "include" });
     step(`✓ ${r.status} ${prefix}/Home/CSRFToken (detect)`);
     if (!r.ok) return null;
-    // A logged-out session redirects this to the LOGIN page, whose HTML also
-    // contains a __RequestVerificationToken — don't be fooled into using it.
+    // A logged-out session redirects (or rewrites, on some instances) this to
+    // the LOGIN page, whose HTML also contains a __RequestVerificationToken —
+    // don't be fooled into using it. Check the URL and the content.
     if (isLoggedOutUrl(r.url)) return null;
     const body = await r.text();
+    if (looksLikeLoginPage(body)) return null;
     const m = /name="__RequestVerificationToken"[^>]*value="([^"]+)"/.exec(body);
     if (m) return m[1]!;
     const t = body.trim();
@@ -118,7 +120,7 @@ export async function cookiesAreLive(): Promise<boolean> {
   try {
     step(`→ GET ${location.pathname} (liveness)`);
     const r = await fetch(location.origin + location.pathname, { credentials: "include" });
-    const live = !isLoggedOutUrl(r.url);
+    const live = !isLoggedOutUrl(r.url) && !looksLikeLoginPage(await r.text());
     step(`✓ ${r.status} liveness → ${live ? "SIGNED IN" : "SIGNED OUT (login redirect)"}`);
     rung({ step: "liveness", outcome: live ? "live" : "signed-out" });
     return live;

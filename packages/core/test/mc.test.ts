@@ -40,6 +40,27 @@ describe("Mc logout signal", () => {
   });
 });
 
+describe("Mc rewrite-login rejection", () => {
+  test("a login page served at the CSRFToken URL (200, no redirect) yields no token", async () => {
+    const LOGIN_PAGE =
+      '<html><body><form action="Login"><input name="__RequestVerificationToken" value="trap"/>' +
+      '<input name="Login"/><input name="Password" type="password"/></form></body></html>';
+    const client: MyChartClient = {
+      origin: "https://h",
+      prefix: "/MyChart",
+      // Rewrite, not redirect: url stays the CSRFToken url, body is the login page.
+      async fetchText(url: string): Promise<McResponse> {
+        return { status: 200, contentType: "text/html", url, body: LOGIN_PAGE };
+      },
+      async fetchBytes() {
+        return { status: 200, bytes: new Uint8Array() };
+      },
+    };
+    const mc = new Mc(client);
+    expect(await mc.token()).toBeNull();
+  });
+});
+
 describe("Mc token fallback (newer Epic / PX)", () => {
   test("uses getPageToken when /Home/CSRFToken returns no token", async () => {
     let pageTokenReads = 0;

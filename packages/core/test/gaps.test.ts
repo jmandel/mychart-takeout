@@ -24,6 +24,17 @@ describe("classifyOutcome", () => {
     expect(classifyOutcome({ status: 500, url: "u" })).toBe("server-error");
     expect(classifyOutcome({ status: null, url: "u" })).toBe("http-error");
   });
+  test("login page by CONTENT (rewrite, not redirect) → redirect-login", () => {
+    const login =
+      '<html><form><input name="Login"/><input name="Password" type="password"/></form></html>';
+    expect(classifyOutcome({ status: 200, body: login, contentType: "text/html", url: "https://h/M/api/x" })).toBe(
+      "redirect-login",
+    );
+    // a settings page with a password field but no login-name field is NOT login
+    const settings = '<html><input name="NewPassword" type="password"/></html>';
+    expect(classifyOutcome({ status: 200, body: settings, contentType: "text/html", url: "u" })).toBe("spa-shell");
+  });
+
   test("WAF block pages → waf-challenge, whatever the status", () => {
     const f5 = "<html><head><title>Request Rejected</title></head><body>The requested URL was rejected. " +
       "Please consult with your administrator.<br>Your support ID is: 1234567890</body></html>";

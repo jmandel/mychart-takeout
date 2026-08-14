@@ -23,6 +23,17 @@ export function isLoggedOutUrl(url: string): boolean {
   return /\/Authentication\/Login|action=logout|\/bye\.asp/i.test(url || "");
 }
 
+/**
+ * A response BODY that is the login page — for instances that REWRITE to the
+ * login surface (200, unchanged URL) instead of redirecting, which the URL
+ * check above can never catch. Requires both a login-name field and a password
+ * field so a signed-in page that merely contains a password input (e.g.
+ * security settings) doesn't read as signed-out.
+ */
+export function looksLikeLoginPage(body: string): boolean {
+  return /name="(Login|LoginName|Username)"/i.test(body || "") && /type="password"/i.test(body || "");
+}
+
 /** Per-call time budget; a hung endpoint costs at most this. */
 export const REQUEST_TIMEOUT_MS = 30_000;
 /** Retries are cheaper: a healthy instance answers in ~2s, so 10s is generous. */
@@ -93,9 +104,9 @@ export class Mc {
       method: "GET",
       headers: { "X-Requested-With": "XMLHttpRequest" },
     });
-    // A logged-out session redirects this to the login page (whose HTML also
-    // has a __RequestVerificationToken) — don't adopt that token.
-    let tok = isLoggedOutUrl(r.url) ? null : parseCsrfToken(r.body);
+    // A logged-out session redirects (or rewrites) this to the login page,
+    // whose HTML also has a __RequestVerificationToken — never adopt that.
+    let tok = isLoggedOutUrl(r.url) || looksLikeLoginPage(r.body) ? null : parseCsrfToken(r.body);
     // 2) Newer Epic ("PX") returns no parseable token there, but embeds it in
     //    the page — read it from the DOM when the driver can (browser/CDP).
     if (!tok && this.client.getPageToken) {
