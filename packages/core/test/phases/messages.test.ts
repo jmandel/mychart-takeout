@@ -67,6 +67,18 @@ describe("message attachments", () => {
     expect(idx[0]).toMatchObject({ attachments: 1, attachments_saved: 1 });
   });
 
+  test("excluded dcsIds (selection card) skip the download and say so", async () => {
+    const c = new AttachmentClient([
+      { DocumentId: "D9", FileDisplayName: "Device Report.pdf", FileExtensionWithoutDot: "pdf" },
+    ]);
+    const { ctx, sink } = makeTestCtx(c, { excludeDocIds: new Set(["D9"]) });
+    await phases.messages(ctx);
+    expect(sink.keys("structured/messages/attachments/")).toEqual([]);
+    expect(c.downloaded).toEqual([]);
+    const row = ctx.manifest.find((m) => m.endpoint === "attachments");
+    expect(row?.note).toBe("0/1 attachments downloaded, 1 excluded by user");
+  });
+
   test("unrecognizable attachment shape → shape-mismatch naming its keys, no download", async () => {
     const c = new AttachmentClient([{ mysteryRef: "x", label: "??" }]);
     const { ctx, sink } = makeTestCtx(c);

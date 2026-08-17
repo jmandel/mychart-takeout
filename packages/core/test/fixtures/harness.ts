@@ -97,7 +97,10 @@ export interface TestCtx {
   logs: string[];
 }
 
-export function makeTestCtx(client: FakeClient, opts: { nonce?: string } = {}): TestCtx {
+export function makeTestCtx(
+  client: FakeClient,
+  opts: { nonce?: string; excludeDocIds?: ReadonlySet<string> } = {},
+): TestCtx {
   const sink = new MemorySink();
   const logs: string[] = [];
   const ctx = makeCtx({
@@ -105,6 +108,7 @@ export function makeTestCtx(client: FakeClient, opts: { nonce?: string } = {}): 
     sink,
     nonce: opts.nonce ?? "deadbeef",
     timeZone: "UTC",
+    excludeDocIds: opts.excludeDocIds,
     log: (m) => logs.push(m),
   });
   ctx.wait = async () => {}; // instant polling in tests

@@ -1,11 +1,7 @@
 import type { PhaseCtx } from "../ctx";
 import { DetailLoopGuard, topKeys } from "../heal";
 import { isRecord, pad3, slug } from "../util";
-import { fetchDcsBytes } from "./dcs";
-
-function str(v: unknown): string {
-  return typeof v === "string" ? v : "";
-}
+import { extractAttachmentRef, fetchDcsBytes } from "./dcs";
 
 interface ConvMeta {
   hthId: string;
@@ -70,6 +66,7 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
   const guard = new DetailLoopGuard();
   let attTotal = 0;
   let attSavedTotal = 0;
+  let attExcluded = 0;
   for (let i = 0; i < entries.length; i++) {
     if (ctx.signal.aborted) break;
     if (guard.abandoned()) {
@@ -133,26 +130,24 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
         const a = atts[ai];
         if (!isRecord(a)) continue;
         attTotal++;
-        const dcsId = str(a.DocumentId) || str(a.dcsId) || str(a.dcsID) || str(a.documentId) || str(a.id);
-        const display = str(a.FileDisplayName) || str(a.fileDisplayName) || str(a.name) || str(a.fileName) || "attachment";
-        const ext = (
-          str(a.FileExtensionWithoutDot) || str(a.fileExtension) || str(a.extension) ||
-          (display.includes(".") ? display.split(".").pop()! : "bin")
-        ).replace(/^\./, "").toLowerCase();
-        if (!dcsId) {
+        const ref = extractAttachmentRef(a);
+        if (!ref) {
           ctx.rec("messages", "attachments", null,
             `attachment without a recognizable document id (keys: ${topKeys(a)})`,
             { outcome: "shape-mismatch" });
           continue;
         }
+        // Attachments and documents share the DCS id namespace, so the
+        // selection card's opt-outs apply to both.
+        if (ctx.excludeDocIds?.has(ref.dcsId)) {
+          attExcluded++;
+          continue;
+        }
         try {
-          const { bytes } = await fetchDcsBytes(ctx, dcsId, ext.toUpperCase(), meta.organizationId);
+          const { bytes } = await fetchDcsBytes(ctx, ref.dcsId, ref.ext.toUpperCase(), meta.organizationId);
           if (bytes) {
-            const base = display.toLowerCase().endsWith(`.${ext}`)
-              ? display.slice(0, -(ext.length + 1))
-              : display;
             await ctx.store.saveBytes(
-              `structured/messages/attachments/${name}_a${ai}_${slug(base, 40)}.${ext}`,
+              `structured/messages/attachments/${name}_a${ai}_${slug(ref.name, 40)}.${ref.ext}`,
               bytes,
             );
             attSaved++;
@@ -181,7 +176,8 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
       "messages",
       "attachments",
       { status: 200, body: "" },
-      `${attSavedTotal}/${attTotal} attachments downloaded`,
+      `${attSavedTotal}/${attTotal} attachments downloaded` +
+        (attExcluded ? `, ${attExcluded} excluded by user` : ""),
     );
   }
 }

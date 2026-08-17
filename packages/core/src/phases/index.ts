@@ -3,6 +3,7 @@ import { accessLog } from "./accessLog";
 import { ccda } from "./ccda";
 import { documents } from "./documents";
 export { OTHER_DOCUMENTS_LIST_KEY } from "./documents";
+export { extractAttachmentRef, fetchDcsBytes, type AttachmentRef } from "./dcs";
 import { flowsheets } from "./flowsheets";
 import { messages } from "./messages";
 import { structured } from "./structured";

@@ -363,8 +363,10 @@ export function ensureOverlay(): Overlay {
           ? ` · ${fmtBytes(census.knownBytes)}${census.unknownCount ? "+" : ""}`
           : "";
       boxes.push({ key: "clinical", el: row("Clinical data", "results, visits, meds, notes, history…") });
-      boxes.push({ key: "messages", el: row("Messages", "every conversation thread") });
-      const docsCb = row("Documents", `${census.docs.length} files${docTotal}`);
+      const msgsCb = row("Messages", "every conversation thread");
+      boxes.push({ key: "messages", el: msgsCb });
+      const files = (n: number): string => `${n} file${n === 1 ? "" : "s"}`;
+      const docsCb = row("Documents", `${files(census.docs.length)}${docTotal}`);
       boxes.push({ key: "documents", el: docsCb });
       for (const d of census.docs.filter((x) => x.outlier)) {
         const cb = row(
@@ -377,6 +379,31 @@ export function ensureOverlay(): Overlay {
       docsCb.addEventListener("change", () => {
         for (const c of docChecks) c.el.disabled = !docsCb.checked;
       });
+      // Message attachments: only shown when the census found some. Same DCS
+      // id namespace as documents, so exclusions ride the same set.
+      const attChecks: { dcsId: string; el: HTMLInputElement }[] = [];
+      let attCb: HTMLInputElement | null = null;
+      if (census.attachments.length > 0) {
+        attCb = row(
+          "Message attachments",
+          `${files(census.attachments.length)} · ${fmtBytes(census.attachmentBytes)}`,
+        );
+        for (const a of census.attachments.filter((x) => x.outlier)) {
+          const cb = row(
+            `include “${a.name}”`,
+            `${a.ext.toUpperCase()} · ${a.bytes !== null ? fmtBytes(a.bytes) : "size unknown"} — unusually large`,
+            true,
+          );
+          attChecks.push({ dcsId: a.dcsId, el: cb });
+        }
+        const syncAtt = (): void => {
+          const on = msgsCb.checked && attCb!.checked;
+          attCb!.disabled = !msgsCb.checked; // attachments live inside messages
+          for (const c of attChecks) c.el.disabled = !on;
+        };
+        attCb.addEventListener("change", syncAtt);
+        msgsCb.addEventListener("change", syncAtt);
+      }
 
       const go = button("Export selected", T.accent);
       go.addEventListener("click", () => {
@@ -389,6 +416,13 @@ export function ensureOverlay(): Overlay {
         for (const b of boxes) sel[b.key] = b.el.checked;
         if (sel.documents) {
           sel.excludeDocIds = docChecks.filter((c) => !c.el.checked).map((c) => c.dcsId);
+        }
+        if (attCb) {
+          sel.excludeDocIds.push(
+            ...(attCb.checked
+              ? attChecks.filter((c) => !c.el.checked).map((c) => c.dcsId)
+              : census.attachments.map((a) => a.dcsId)),
+          );
         }
         onExport(sel);
       });

@@ -362,7 +362,7 @@ export function conversationList(tag: number): unknown {
   if (tag === 1) {
     return {
       conversations: [
-        { hthId: "TH1", subject: "Lab results question", organizationId: "ORG1" },
+        { hthId: "TH1", subject: "Lab results question", organizationId: "ORG1", hasAttachments: true },
       ],
     };
   }

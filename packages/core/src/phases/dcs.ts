@@ -12,6 +12,42 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+export interface AttachmentRef {
+  dcsId: string;
+  /** Display name without its extension. */
+  name: string;
+  /** Lowercase extension, no dot. */
+  ext: string;
+}
+
+/**
+ * Read a message attachment's DCS reference out of its (instance-varying)
+ * JSON. Field candidates come from the messaging UI's own attachment-viewer
+ * model (DocumentId/FileExtensionWithoutDot/FileDisplayName) plus plausible
+ * camelCase variants. Returns null when no document id is recognizable —
+ * callers record a shape-mismatch naming the keys so field reports reveal
+ * the real shape. Shared by the messages phase and the census.
+ */
+export function extractAttachmentRef(a: unknown): AttachmentRef | null {
+  if (!isRecord(a)) return null;
+  const dcsId = str(a.DocumentId) || str(a.dcsId) || str(a.dcsID) || str(a.documentId) || str(a.id);
+  if (!dcsId) return null;
+  const display =
+    str(a.FileDisplayName) || str(a.fileDisplayName) || str(a.name) || str(a.fileName) || "attachment";
+  const ext = (
+    str(a.FileExtensionWithoutDot) ||
+    str(a.fileExtension) ||
+    str(a.extension) ||
+    (display.includes(".") ? display.split(".").pop()! : "bin")
+  )
+    .replace(/^\./, "")
+    .toLowerCase();
+  const name = display.toLowerCase().endsWith(`.${ext}`)
+    ? display.slice(0, -(ext.length + 1))
+    : display;
+  return { dcsId, name, ext };
+}
+
 export interface DcsFetch {
   /** The GetDocumentDetails response (or null when it wasn't JSON). */
   detail: unknown;
