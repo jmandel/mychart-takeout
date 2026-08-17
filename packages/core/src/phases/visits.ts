@@ -38,10 +38,8 @@ export async function visits(ctx: PhaseCtx): Promise<void> {
     const r = await ctx.mc.nobody(
       `Visits/VisitsList/LoadUpcoming?timeZone=${encodeURIComponent(ctx.timeZone)}&ComponentNumber=5&noCache=${ctx.nonce}`,
     );
-    await ctx.store.saveJson(
-      "structured/visits/upcoming.json",
-      r.json != null ? r.json : { _raw: r.body },
-    );
+    // Non-JSON here is a failure page, not data — record it, don't save it.
+    if (r.json != null) await ctx.store.saveJson("structured/visits/upcoming.json", r.json);
     ctx.rec("visits", "LoadUpcoming", r);
   } catch (e) {
     ctx.log(`  ERR upcoming ${e}`);

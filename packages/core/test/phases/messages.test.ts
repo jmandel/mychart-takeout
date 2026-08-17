@@ -22,6 +22,62 @@ function alexClient(): FakeClient {
   });
 }
 
+/** Serves one thread whose message carries attachments; records byte fetches. */
+class AttachmentClient extends FakeClient {
+  downloaded: string[] = [];
+  constructor(attachments: unknown[]) {
+    super({
+      "api/conversations/GetFoldersList": { folders: [] },
+      "api/conversations/GetOrganizations": { organizations: [] },
+      "api/conversations/GetConversationList": (init: FetchInit) =>
+        bodyOf(init).tag === 1
+          ? { conversations: [{ hthId: "TA", subject: "Device check", organizationId: "ORG9" }] }
+          : { conversations: [] },
+      "api/conversations/GetConversationDetails": {
+        messages: [{ body: "<p>report attached</p>", attachments }],
+      },
+      "api/documents/viewer/GetDocumentDetails": (init: FetchInit) => ({
+        dcsId: bodyOf(init).dcsId,
+        token: `tok-${bodyOf(init).dcsId}`,
+        orgId: String(bodyOf(init).organizationId ?? ""),
+      }),
+    });
+  }
+  override async fetchBytes(pathOrUrl: string): Promise<{ status: number; bytes: Uint8Array }> {
+    this.downloaded.push(pathOrUrl);
+    return { status: 200, bytes: new Uint8Array(9) };
+  }
+}
+
+describe("message attachments", () => {
+  test("downloads DCS attachments via the ViewDocument flow, with org passed through", async () => {
+    const c = new AttachmentClient([
+      { DocumentId: "D9", FileDisplayName: "Device Report.pdf", FileExtensionWithoutDot: "pdf" },
+    ]);
+    const { ctx, sink } = makeTestCtx(c);
+    await phases.messages(ctx);
+    expect(sink.has("structured/messages/attachments/000_Device_check_a0_Device_Report.pdf")).toBe(true);
+    // detail request carried the attachment's id + the thread's organization
+    const det = c.calls.find((x) => x.url.endsWith("GetDocumentDetails"))!;
+    expect(bodyOf(det.init)).toMatchObject({ dcsId: "D9", organizationId: "ORG9" });
+    expect(c.downloaded[0]).toContain("DownloadOrStream?dcsId=D9&token=tok-D9");
+    const row = ctx.manifest.find((m) => m.endpoint === "attachments");
+    expect(row?.note).toBe("1/1 attachments downloaded");
+    const idx = sink.json("structured/messages/_threads_full_index.json") as Record<string, unknown>[];
+    expect(idx[0]).toMatchObject({ attachments: 1, attachments_saved: 1 });
+  });
+
+  test("unrecognizable attachment shape → shape-mismatch naming its keys, no download", async () => {
+    const c = new AttachmentClient([{ mysteryRef: "x", label: "??" }]);
+    const { ctx, sink } = makeTestCtx(c);
+    await phases.messages(ctx);
+    expect(sink.keys("structured/messages/attachments/")).toEqual([]);
+    const row = ctx.manifest.find((m) => m.outcome === "shape-mismatch");
+    expect(row?.note).toContain("mysteryRef,label");
+    expect(c.downloaded).toEqual([]);
+  });
+});
+
 describe("messages phase", () => {
   test("saves folder/org lists and per-tag conversation lists", async () => {
     const { ctx, sink } = makeTestCtx(alexClient());

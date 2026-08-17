@@ -1,6 +1,11 @@
 import type { PhaseCtx } from "../ctx";
 import { DetailLoopGuard, topKeys } from "../heal";
 import { isRecord, pad3, slug } from "../util";
+import { fetchDcsBytes } from "./dcs";
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
 
 interface ConvMeta {
   hthId: string;
@@ -63,6 +68,8 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
   const index: Record<string, unknown>[] = [];
   const entries = [...conv.entries()];
   const guard = new DetailLoopGuard();
+  let attTotal = 0;
+  let attSavedTotal = 0;
   for (let i = 0; i < entries.length; i++) {
     if (ctx.signal.aborted) break;
     if (guard.abandoned()) {
@@ -113,7 +120,49 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
           );
         }
       }
-      index.push({ ...meta, full_msgs: msgs.length });
+      // Attachments (e.g. device reports) are DCS documents — the messaging
+      // UI's own viewer opens them through ViewDocument with the attachment's
+      // DocumentId, so the documents download flow applies verbatim. Field
+      // names are instance-observed best-effort: an attachment whose id we
+      // can't find records a shape-mismatch naming its keys, so a field
+      // report reveals the real shape even where the download can't run.
+      const atts = msgs.flatMap((m) => (isRecord(m) && Array.isArray(m.attachments) ? m.attachments : []));
+      let attSaved = 0;
+      for (let ai = 0; ai < atts.length; ai++) {
+        if (ctx.signal.aborted) break;
+        const a = atts[ai];
+        if (!isRecord(a)) continue;
+        attTotal++;
+        const dcsId = str(a.DocumentId) || str(a.dcsId) || str(a.dcsID) || str(a.documentId) || str(a.id);
+        const display = str(a.FileDisplayName) || str(a.fileDisplayName) || str(a.name) || str(a.fileName) || "attachment";
+        const ext = (
+          str(a.FileExtensionWithoutDot) || str(a.fileExtension) || str(a.extension) ||
+          (display.includes(".") ? display.split(".").pop()! : "bin")
+        ).replace(/^\./, "").toLowerCase();
+        if (!dcsId) {
+          ctx.rec("messages", "attachments", null,
+            `attachment without a recognizable document id (keys: ${topKeys(a)})`,
+            { outcome: "shape-mismatch" });
+          continue;
+        }
+        try {
+          const { bytes } = await fetchDcsBytes(ctx, dcsId, ext.toUpperCase(), meta.organizationId);
+          if (bytes) {
+            const base = display.toLowerCase().endsWith(`.${ext}`)
+              ? display.slice(0, -(ext.length + 1))
+              : display;
+            await ctx.store.saveBytes(
+              `structured/messages/attachments/${name}_a${ai}_${slug(base, 40)}.${ext}`,
+              bytes,
+            );
+            attSaved++;
+            attSavedTotal++;
+          }
+        } catch (e) {
+          ctx.log(`   attachment err ${e}`);
+        }
+      }
+      index.push({ ...meta, full_msgs: msgs.length, attachments: atts.length, attachments_saved: attSaved });
     } catch (e) {
       guard.fail();
       index.push({ ...meta, error: String(e) });
@@ -127,4 +176,12 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
     { status: 200, body: "" },
     `${index.length} threads, ${total} messages`,
   );
+  if (attTotal > 0) {
+    ctx.rec(
+      "messages",
+      "attachments",
+      { status: 200, body: "" },
+      `${attSavedTotal}/${attTotal} attachments downloaded`,
+    );
+  }
 }

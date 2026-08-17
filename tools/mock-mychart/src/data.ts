@@ -390,6 +390,11 @@ export const conversationDetails: Record<string, unknown> = {
         body: "<p>Thank you!</p>",
         deliveryInstantISO: "2026-05-02T10:00:00",
         author: { name: "Alex Example" },
+        // Message attachment = a DCS document (same store as documents/other/);
+        // field names match the classic attachment viewer's model.
+        attachments: [
+          { DocumentId: "DOC-B", FileDisplayName: "Device Report.tif", FileExtensionWithoutDot: "tif" },
+        ],
       },
     ],
   },

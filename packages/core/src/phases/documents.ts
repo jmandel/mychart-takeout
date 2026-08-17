@@ -1,5 +1,6 @@
 import type { PhaseCtx } from "../ctx";
 import { isRecord, pad2, slug } from "../util";
+import { fetchDcsBytes } from "./dcs";
 
 /**
  * phase_documents: fetch the CONTENT of each document, not just the list.
@@ -46,32 +47,16 @@ export async function documents(ctx: PhaseCtx): Promise<void> {
     const ext = (str(d.docExt) || "PDF").toLowerCase();
     const name = `${pad2(i)}_${slug(str(d.docDesc) || str(d.docType) || "document", 50)}`;
     try {
-      const det = await ctx.mc.api("api/documents/viewer/GetDocumentDetails", {
-        dcsId,
-        fileExtension: str(d.docExt) || "PDF",
-        organizationId: "",
-        useOldMobileLink: false,
-      });
-      const dj = det.json;
+      const { detail, bytes } = await fetchDcsBytes(ctx, dcsId, str(d.docExt) || "PDF");
       await ctx.store.saveJson(`documents/other/${name}_detail.json`, {
         doc: d,
-        detail: dj ?? { _raw: det.body },
+        // A non-JSON detail response is a failure page — never embed it.
+        detail: detail ?? { _unavailable: true },
       });
       details++;
-      // Download the bytes only when we have the per-document token.
-      if (isRecord(dj) && str(dj.token)) {
-        const q = new URLSearchParams({
-          dcsId: str(dj.dcsId) || dcsId,
-          token: str(dj.token),
-          orgId: str(dj.orgId),
-        });
-        const { status, bytes } = await ctx.client.fetchBytes(
-          `${ctx.client.prefix}/Documents/ViewDocument/DownloadOrStream?${q.toString()}`,
-        );
-        if (status === 200 && bytes.length > 0) {
-          await ctx.store.saveBytes(`documents/other/${name}.${ext}`, bytes);
-          files++;
-        }
+      if (bytes) {
+        await ctx.store.saveBytes(`documents/other/${name}.${ext}`, bytes);
+        files++;
       }
     } catch (e) {
       ctx.log(`  doc ${i} err ${e}`);

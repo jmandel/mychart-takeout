@@ -71,6 +71,8 @@ structured/                   SOURCE OF TRUTH — raw JSON per domain, e.g.:
     list_tag*.json, _threads_full_index.json
     threads_full/NNN_*.json   per-thread JSON
     threads_full/NNN_*_mN.html  each message body (rendered HTML)
+    attachments/NNN_*_aN.<ext>  message attachments (e.g. device reports),
+                                downloaded as original binaries
   _captured_from_navigation/  (CDP exports only) best JSON per endpoint
 documents/other/              downloaded document CONTENT (not just the list):
   NN_<desc>.<pdf|tif|html>      insurance cards, external-provider records,

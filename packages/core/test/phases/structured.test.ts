@@ -28,12 +28,14 @@ describe("structured phase", () => {
     ).toEqual(ALEX_FLOWSHEETS);
   });
 
-  test("unrouted SIMPLE endpoints fall back to {_raw} (non-JSON body)", async () => {
+  test("non-JSON responses are recorded but NEVER saved into structured/", async () => {
+    // Field case: endpoints that 302 into a huge HTML error page were being
+    // written as "data", making a failed domain look populated.
     const { ctx, sink } = makeTestCtx(client());
     await phases.structured(ctx);
-    expect(sink.json("structured/immunizations/immunizations__LoadImmunizations.json")).toEqual({
-      _raw: "<html>SPA shell</html>",
-    });
+    expect(sink.has("structured/immunizations/immunizations__LoadImmunizations.json")).toBe(false);
+    const row = ctx.manifest.find((m) => m.endpoint === "immunizations/LoadImmunizations");
+    expect(row?.outcome).toBe("not-found"); // the failure still lands in gaps
   });
 
   test("resolves body sentinels (NONCE, UPCOMING, ITEMFEED)", async () => {

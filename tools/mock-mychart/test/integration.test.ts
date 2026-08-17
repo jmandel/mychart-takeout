@@ -84,6 +84,10 @@ describe.skipIf(!CHROMIUM)("in-browser export against mock MyChart", () => {
     expect(textOf("structured/messages/threads_full/000_Lab_results_question_m0.html")).toContain("lab results");
     expect(files["structured/messages/threads_full/000_Lab_results_question_m1.html"]).toBeDefined();
     expect(textOf("structured/messages/threads_full/001_Refill_request_m0.html")).toContain("Example Pharmacy");
+    // attachment = DCS blob, downloaded via the ViewDocument flow
+    const att = files["structured/messages/attachments/000_Lab_results_question_a0_Device_Report.tif"];
+    expect(att).toBeDefined();
+    expect(att!.length).toBe(40_000);
     const idx = JSON.parse(textOf("structured/messages/_threads_full_index.json"));
     expect(idx).toHaveLength(2);
   });

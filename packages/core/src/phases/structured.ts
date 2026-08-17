@@ -34,11 +34,14 @@ export async function structured(ctx: PhaseCtx): Promise<void> {
           }
         }
       }
-      const name = rel.replace(/\//g, "__");
-      await ctx.store.saveJson(
-        `structured/${domain}/${name}.json`,
-        r.json != null ? r.json : { _raw: r.body },
-      );
+      // Only JSON lands in structured/ — a redirect can 200 into a huge HTML
+      // error page, and saving that as "data" makes a failed domain look
+      // populated (observed in the field: 4 × 403KB "Page Not Found" pages).
+      // The rec below still puts the failure in the manifest + gaps report.
+      if (r.json != null) {
+        const name = rel.replace(/\//g, "__");
+        await ctx.store.saveJson(`structured/${domain}/${name}.json`, r.json);
+      }
       ctx.rec(domain, rel, r, note);
     } catch (e) {
       ctx.log(`  ERR ${path} ${e}`);
