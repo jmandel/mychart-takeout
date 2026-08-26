@@ -95,6 +95,9 @@ function landingPage(bmHref: string): string {
   @media (max-width: 560px) { ul.grid { grid-template-columns: 1fr; } }
   .trust li { margin: 6px 0; }
   .trust strong { color: var(--ink); }
+  .caution { margin-top: 18px; border-left: 4px solid var(--accent); }
+  .caution h3 { margin: 0 0 8px; font-size: 17px; }
+  .caution p { margin: 0; font-size: 16px; }
   footer { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
   .pill { display: inline-block; font-size: 12px; font-weight: 700; color: var(--good);
     border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
@@ -156,6 +159,19 @@ function landingPage(bmHref: string): string {
       There is no backend to send data to.</li>
     <li><strong>Open source.</strong> Read every line before you run it — <a href="${REPO}">source on GitHub</a>.</li>
   </ul>
+
+  <div class="panel caution">
+    <h3>A note of caution</h3>
+    <p>A bookmarklet is code that runs inside your logged-in session, with all the access you have
+      there. That is what makes this tool possible. It is also what makes tools like it dangerous when
+      they come from someone you don't trust: a malicious script installed the same way could send your
+      records to a stranger, capture your credentials, or act in your account. MyChart Takeout's code is
+      public so anyone can check what it does — but that only helps if someone actually reads it. If you
+      can't review the code yourself, make sure you really trust whoever is providing it. Asking an AI to
+      review can help, too (though a determined attacker can hide behavior that a quick review will miss).
+      This is not hypothetical: health systems are seeing a rise in attackers trying to trick patients
+      into running scripts in their portals.</p>
+  </div>
 
   <h2>Prefer not to use a bookmarklet?</h2>
   <p><strong>Console:</strong> on a signed-in MyChart tab, open your browser's DevTools → Console, type
