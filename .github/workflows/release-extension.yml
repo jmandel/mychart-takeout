@@ -1,0 +1,54 @@
+name: Release extension
+
+# Pushing a v* tag uploads dist/extension.zip to the Chrome Web Store and
+# submits it for review:   (bump "version" in package.json, commit, then)
+#   git tag v0.2.0 && git push --tags
+#
+# No stored credentials: GitHub's OIDC token is exchanged (Workload Identity
+# Federation, GCP project bionic-freehold-593) for a short-lived token of the
+# cws-publisher service account, which is a member of the store publisher.
+# The identity provider only accepts this repo's refs/tags/v* runs.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency: release-extension
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ITEM: publishers/${{ vars.CWS_PUBLISHER_ID }}/items/${{ vars.CWS_EXTENSION_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: Tag must match package.json version
+        run: |
+          v=$(bun -e 'console.log(require("./package.json").version)')
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != package.json v$v"; exit 1; }
+      - run: bunx tsc --noEmit
+      - run: bun test
+      - run: bun run build:web
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/738774582941/locations/global/workloadIdentityPools/github/providers/mychart-takeout
+          service_account: cws-publisher@bionic-freehold-593.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+      - name: Upload package
+        run: |
+          curl -sS --fail-with-body -X POST -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }}" \
+            -T dist/extension.zip "https://chromewebstore.googleapis.com/upload/v2/$ITEM:upload" | tee upload.json
+          grep -q '"uploadState": *"\(SUCCEEDED\|IN_PROGRESS\)"' upload.json
+      - name: Submit for review
+        run: |
+          curl -sS --fail-with-body -X POST -H "Authorization: Bearer ${{ steps.auth.outputs.access_token }}" \
+            "https://chromewebstore.googleapis.com/v2/$ITEM:publish"

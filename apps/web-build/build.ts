@@ -35,7 +35,12 @@ const extSrc = join(import.meta.dir, "..", "extension");
 const extOut = join(dist, "extension");
 rmSync(extOut, { recursive: true, force: true });
 mkdirSync(extOut, { recursive: true });
-for (const f of ["manifest.json", "background.js", "icons"]) cpSync(join(extSrc, f), join(extOut, f), { recursive: true });
+for (const f of ["background.js", "icons"]) cpSync(join(extSrc, f), join(extOut, f), { recursive: true });
+// ONE version source: the root package.json. The store requires every upload
+// to carry a higher version than the last, so bump it there to release.
+const { version } = JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "package.json"), "utf8"));
+const manifest = JSON.parse(readFileSync(join(extSrc, "manifest.json"), "utf8"));
+writeFileSync(join(extOut, "manifest.json"), JSON.stringify({ ...manifest, version }, null, 2));
 rmSync(join(extOut, "icons", "icon.svg")); // source art; the store wants PNGs only
 writeFileSync(join(extOut, "takeout.js"), code);
 const zipEntries: Record<string, Uint8Array> = {};
@@ -51,7 +56,7 @@ const extZip = zipSync(zipEntries);
 writeFileSync(join(dist, "extension.zip"), extZip);
 
 console.log(`dist/index.html      landing page`);
-console.log(`dist/extension.zip   ${(extZip.length / 1024).toFixed(1)} KB`);
+console.log(`dist/extension.zip   ${(extZip.length / 1024).toFixed(1)} KB (v${version})`);
 console.log(`dist/console.js      ${(code.length / 1024).toFixed(1)} KB`);
 console.log(`dist/bookmarklet.txt ${(bookmarklet.length / 1024).toFixed(1)} KB`);
 if (code.length > SIZE_BUDGET) {

@@ -46,5 +46,6 @@ with `bun run build:web` → `dist/extension.zip`; screenshots with
 
 ## Releasing an update
 
-Bump `version` in `apps/extension/manifest.json`, rebuild, upload the new zip
+Bump `version` in the root `package.json` (the build stamps it into the
+manifest; the source manifest's `0.0.0` is a placeholder), rebuild, upload the new zip
 in the dashboard (Package → Upload new package), submit for review.
