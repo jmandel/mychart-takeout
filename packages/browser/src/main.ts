@@ -302,7 +302,7 @@ void (async () => {
     overlay.log(`Embedded MyChart frame found → ${embedded}`);
     overlay.setFailed(
       `MyChart is embedded inside this page (${location.host}), where this tool can't reach it.\n` +
-        "Open MyChart directly in a new tab, then run the bookmarklet again there.",
+        "Open MyChart directly in a new tab (it may look broken outside its frame — the export is unaffected), then run the bookmarklet again there.",
       { label: `Open ${new URL(embedded).host} ↗`, href: embedded },
     );
   } else if (state === "signed-out") {
