@@ -155,6 +155,8 @@ fixture trees. The Python was then deleted (git history keeps it).
 
 ## Known limitations & instance notes
 
+- **Stanford MyHealth:** sign in through `https://myhealth.stanfordhealthcare.org/signedin/`, then open `https://mychart.stanfordhealthcare.org/myhealth_sso/Home/` in another tab in the same browser and run the bookmarklet there. The outer portal embeds Epic on a different origin. When detection fails on that wrapper and a recognized MyChart iframe is present, Takeout offers a link to the direct page. Opening the link does not start an export; run the bookmarklet again in the new tab.
+
 - **FHIR R4** needs a registered OAuth2 `client_id`; MyChart session cookies
   don't authenticate it. The internal API yields the same clinical facts and
   the C-CDA is the standards-format export.

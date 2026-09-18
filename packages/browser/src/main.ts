@@ -14,6 +14,7 @@ import { collectDebugReport } from "./debug";
 import { cookiesAreLive, ladderTranscript, pageToken, preflightMyChart, resolveMyChart, resolvedMyChart } from "./detect";
 import { capturedRequests, installNetCapture, observedApiPaths, resourceApiEntries } from "./netcapture";
 import { exportFilename } from "./filename";
+import { embeddedMyChartUrl } from "./embedded";
 import {
   currentJournal,
   finish,
@@ -301,6 +302,14 @@ void (async () => {
         "Sign in, then run the bookmarklet again — or click Debug to make a report to share privately with Josh.",
     );
   } else {
+    const embeddedUrl = embeddedMyChartUrl(
+      location.href,
+      Array.from(document.querySelectorAll("iframe[src]"), (f) => f.getAttribute("src") || ""),
+    );
+    if (embeddedUrl) {
+      overlay.setOpenMyChart(embeddedUrl);
+      return;
+    }
     overlay.setFailed(
       `This doesn't look like a MyChart page (${location.host}).\n` +
         "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",

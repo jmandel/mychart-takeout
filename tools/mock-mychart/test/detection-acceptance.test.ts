@@ -123,6 +123,57 @@ async function withMock(opts: MockOpts, fn: (mock: MockServer) => Promise<void>)
 }
 
 describe.skipIf(!CHROMIUM)("detection acceptance: hostile MyChart instances", () => {
+  test("Stanford wrapper offers a clean, user-initiated handoff; direct page detects normally", async () => {
+    // Every request is fulfilled locally. These are public route names only,
+    // with synthetic HTML/token values and no live portal or patient data.
+    const wrapper = "https://myhealth.stanfordhealthcare.org/signedin/";
+    const home = "https://mychart.stanfordhealthcare.org/myhealth_sso/Home/";
+    const requests: { method: string; url: string }[] = [];
+    const context = await browser!.newContext();
+    try {
+      await context.route("**/*", async (route) => {
+        const req = route.request();
+        requests.push({ method: req.method(), url: req.url() });
+        const url = new URL(req.url());
+        if (req.url() === wrapper) {
+          await route.fulfill({ contentType: "text/html", body:
+            '<html><body>Portal<iframe src="https://mychart.stanfordhealthcare.org/myhealth_sso/inside.asp?webservice=synthetic#private"></iframe></body></html>' });
+        } else if (url.origin === new URL(home).origin &&
+          ["/myhealth_sso/inside.asp", "/myhealth_sso/Home/"].includes(url.pathname)) {
+          await route.fulfill({ contentType: "text/html", body:
+            '<html><body><input type="hidden" name="__RequestVerificationToken" value="synthetic-page-token"><script>window.EpicPx = {};</script></body></html>' });
+        } else {
+          await route.fulfill({ status: 404, contentType: "text/html", body: "Not found" });
+        }
+      });
+      const page = await context.newPage();
+      await page.goto(wrapper);
+      await page.addScriptTag({ content: bundle });
+      const link = page.getByRole("link", { name: "Open MyChart in a new tab" });
+      await link.waitFor();
+      expect(await link.getAttribute("href")).toBe(home);
+      expect(await link.getAttribute("rel")).toBe("noopener noreferrer");
+      expect(context.pages()).toHaveLength(1);
+      expect(page.url()).toBe(wrapper);
+      expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
+      expect(requests.some((r) => r.url === home)).toBe(false);
+      expect(await page.locator("iframe").evaluate((f) => (f as HTMLIFrameElement).contentDocument === null)).toBe(true);
+
+      const opened = context.waitForEvent("page");
+      await link.click();
+      const direct = await opened;
+      await direct.waitForLoadState();
+      expect(direct.url()).toBe(home);
+      expect(await direct.evaluate(() => window.opener === null)).toBe(true);
+      await direct.addScriptTag({ content: bundle });
+      await direct.getByRole("button", { name: "Export everything", exact: true }).waitFor();
+      expect(await direct.getByRole("link", { name: "Open MyChart in a new tab" }).count()).toBe(0);
+      expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  }, 30_000);
+
   test(
     "PX build, signed in: resolves the prefix via the page token and exports real data",
     async () =>

@@ -52,6 +52,7 @@ export interface Overlay {
   log(line: string): void;
   setChecking(msg: string): void;
   setReady(actions: ReadyActions): void;
+  setOpenMyChart(url: string): void;
   /** One-line status; safe to call repeatedly (updates in place). */
   setBusy(status: string): void;
   setSelect(census: Census, onExport: (sel: Selection) => void): void;
@@ -320,6 +321,23 @@ export function ensureOverlay(): Overlay {
         statusLine("Ready — signed-in MyChart detected. Keep this tab open."),
         all,
         scan,
+      );
+    },
+
+    setOpenMyChart(url: string) {
+      const link = el(
+        "a",
+        `background:${T.accent};color:#fff;border-radius:6px;padding:6px 12px;text-decoration:none;text-align:center;`,
+        "Open MyChart in a new tab",
+      );
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      render(
+        "open-mychart",
+        statusLine("Stanford embeds MyChart inside this portal. Open MyChart directly, then run the Takeout bookmarklet again in the new tab."),
+        link,
+        dismissRow(),
       );
     },
 
