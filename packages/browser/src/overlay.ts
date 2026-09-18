@@ -56,7 +56,9 @@ export interface Overlay {
   setBusy(status: string): void;
   setSelect(census: Census, onExport: (sel: Selection) => void): void;
   setDone(zip: Uint8Array, filename?: string): void;
-  setFailed(message: string): void;
+  /** `link` is the one escape hatch a failure may offer (e.g. "MyChart is
+   *  embedded here — open it directly"); it opens in a new tab. */
+  setFailed(message: string, link?: { label: string; href: string }): void;
   onDebug(fn: () => Promise<string>): void;
 }
 
@@ -442,7 +444,7 @@ export function ensureOverlay(): Overlay {
       render("done", statusLine("Done — safe to close."), dl, dismissRow());
     },
 
-    setFailed(message: string) {
+    setFailed(message: string, link?: { label: string; href: string }) {
       root.style.borderColor = T.badLine;
       title.style.background = T.bad;
       const banner = el(
@@ -453,7 +455,20 @@ export function ensureOverlay(): Overlay {
       // Debug is promoted here — it's the one useful next step on failure.
       const dbg = button("Debug", T.line, T.ink);
       dbg.addEventListener("click", () => debugBtn.click());
-      render("failed", banner, dismissRow(dbg));
+      if (!link) {
+        render("failed", banner, dismissRow(dbg));
+        return;
+      }
+      const a = el(
+        "a",
+        `background:${T.accent};color:#fff;border-radius:6px;padding:6px 12px;text-decoration:none;text-align:center;`,
+        link.label,
+      );
+      a.href = link.href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.title = link.href;
+      render("failed", banner, a, dismissRow(dbg));
     },
   };
   overlay.setChecking("Checking this is a MyChart page…");

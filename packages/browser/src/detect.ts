@@ -68,6 +68,59 @@ export function candidatePrefixes(): string[] {
   return [...new Set(list)];
 }
 
+/** Last two host labels — a PSL-free stand-in for "same organization". */
+const siteOf = (host: string): string => host.split(".").slice(-2).join(".");
+
+/**
+ * Some health systems wrap MyChart in their own portal: the outer page (e.g.
+ * myhealth.example.org/signedin/) is NOT MyChart — it iframes the real app from
+ * another origin, which this page's JavaScript can't reach. Given the page's
+ * iframe srcs, return the URL of the embedded app's home page so the user can
+ * open it top-level and run the tool there. Pure: reads src strings only.
+ *
+ * The result becomes a link in OUR overlay, so a hostile page must not be able
+ * to steer it somewhere surprising. A frame qualifies only if ALL hold:
+ *  - https, no userinfo;
+ *  - same site as the page (mychart.example.org inside myhealth.example.org)
+ *    — the portal vouching for its own domain, never a third party's;
+ *  - it looks like Epic: "mychart" in host/path, or the classic inside.asp
+ *    SSO landing — never a video/captcha/analytics frame.
+ * And the link is always <origin><prefix>/Home/ — SSO landing URLs carry
+ * one-shot query params; nothing from the src's query or hash is copied.
+ */
+export function embeddedMyChartHome(frameSrcs: readonly string[], pageUrl: string): string | null {
+  let page: URL;
+  try {
+    page = new URL(pageUrl);
+  } catch {
+    return null;
+  }
+  for (const raw of frameSrcs) {
+    let u: URL;
+    try {
+      u = new URL(raw, page);
+    } catch {
+      continue;
+    }
+    if (u.protocol !== "https:" || u.username || u.password) continue;
+    if (siteOf(u.hostname) !== siteOf(page.hostname)) continue;
+    if (!/mychart/i.test(u.hostname + u.pathname) && !/\/inside\.asp$/i.test(u.pathname)) continue;
+    const segs = u.pathname.split("/").filter(Boolean);
+    // A lone "inside.asp" at the root is a file, not a prefix.
+    const prefix = segs.length > 1 || (segs[0] && !segs[0].includes(".")) ? `/${segs[0]}` : "";
+    // A frame of the app we're already on (and failed to detect) is no help.
+    if (u.origin === page.origin && prefix === derivePrefix(page.pathname, "")) continue;
+    return `${u.origin}${prefix}/Home/`;
+  }
+  return null;
+}
+
+/** embeddedMyChartHome() for the live page. */
+export function embeddedMyChartOnPage(): string | null {
+  const srcs = Array.from(document.querySelectorAll("iframe[src]")).map((f) => f.getAttribute("src") || "");
+  return embeddedMyChartHome(srcs, location.href);
+}
+
 /** The __RequestVerificationToken embedded in the current page, if present.
  *  Newer Epic ("PX") builds don't return it from /Home/CSRFToken. */
 export function pageToken(): string | null {

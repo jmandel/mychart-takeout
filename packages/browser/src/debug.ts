@@ -1,6 +1,6 @@
 import { classifyOutcome } from "@mychart/core";
 import { BUILD } from "./buildInfo";
-import { candidatePrefixes, discoverPrefixes, ladderTranscript, pageToken, pxMarkers, resolvedMyChart } from "./detect";
+import { candidatePrefixes, discoverPrefixes, embeddedMyChartOnPage, ladderTranscript, pageToken, pxMarkers, resolvedMyChart } from "./detect";
 import { formatJournal, likelyCulprit, priorCrashedRun } from "./journal";
 import { capturedRequests, resourceApiEntries } from "./netcapture";
 
@@ -233,6 +233,7 @@ export async function collectDebugReport(): Promise<string> {
       candidatePrefixesTried: candidates,
       pageTokenFound: pageToken() !== null, // newer Epic: token embedded in page
       pxMarkersFound: pxMarkers(),
+      embeddedMyChartHome: embeddedMyChartOnPage(), // portal wrapping MyChart in an iframe
       resolved: resolved ? { prefix: resolved.prefix, tokenSource: resolved.source } : null,
       // The verify-before-trust decision tree: every (prefix, token-source)
       // rung tried and how it ended. THIS is the first thing to read.
@@ -261,7 +262,7 @@ export async function collectDebugReport(): Promise<string> {
       requestVerificationTokenInputsOnPage: tokenInputsOnPage,
       epicGlobals,
       cookieNames,
-      sameOriginIframes: iframes,
+      iframes,
     },
   };
   return JSON.stringify(report, null, 2);

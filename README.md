@@ -155,6 +155,10 @@ fixture trees. The Python was then deleted (git history keeps it).
 
 ## Known limitations & instance notes
 
+- **Wrapper portals** (e.g. Stanford MyHealth) embed MyChart in an iframe on
+  another origin, where the bookmarklet can't reach it. When a same-site,
+  https, MyChart-looking frame is present, the overlay offers a link to the
+  embedded app's `<prefix>/Home/`; run the bookmarklet again in that tab.
 - **FHIR R4** needs a registered OAuth2 `client_id`; MyChart session cookies
   don't authenticate it. The internal API yields the same clinical facts and
   the C-CDA is the standards-format export.

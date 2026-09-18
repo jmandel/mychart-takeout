@@ -11,7 +11,7 @@ import { BUILD } from "./buildInfo";
 import { runCensus } from "./census";
 import { BrowserClient, derivePrefix } from "./client";
 import { collectDebugReport } from "./debug";
-import { cookiesAreLive, ladderTranscript, pageToken, preflightMyChart, resolveMyChart, resolvedMyChart } from "./detect";
+import { cookiesAreLive, embeddedMyChartOnPage, ladderTranscript, pageToken, preflightMyChart, resolveMyChart, resolvedMyChart } from "./detect";
 import { capturedRequests, installNetCapture, observedApiPaths, resourceApiEntries } from "./netcapture";
 import { exportFilename } from "./filename";
 import {
@@ -289,12 +289,22 @@ if (crashed) {
 // click, so merely loading the bookmarklet can never sign anyone out.
 void (async () => {
   const state = await preflightMyChart();
+  const embedded = state === "likely" ? null : embeddedMyChartOnPage();
   if (state === "likely") {
     overlay.log(`This looks like a signed-in MyChart page (${location.host}).`);
     overlay.setReady({
       onExportAll: () => startRunSafely({}),
       onScanFirst: () => void scanFirst(),
     });
+  } else if (embedded) {
+    // A health-system portal wrapping MyChart in a cross-origin iframe: we
+    // can't reach into it from here, but the user can open it top-level.
+    overlay.log(`Embedded MyChart frame found → ${embedded}`);
+    overlay.setFailed(
+      `MyChart is embedded inside this page (${location.host}), where this tool can't reach it.\n` +
+        "Open MyChart directly in a new tab, then run the bookmarklet again there.",
+      { label: `Open ${new URL(embedded).host} ↗`, href: embedded },
+    );
   } else if (state === "signed-out") {
     overlay.setFailed(
       `You don't appear to be signed in to MyChart (${location.host}).\n` +

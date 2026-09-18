@@ -123,6 +123,55 @@ async function withMock(opts: MockOpts, fn: (mock: MockServer) => Promise<void>)
 }
 
 describe.skipIf(!CHROMIUM)("detection acceptance: hostile MyChart instances", () => {
+  test("wrapper portal (MyChart in a cross-origin iframe): user-initiated handoff, then normal detection", async () => {
+    // Every request is fulfilled locally with synthetic HTML — no live portal.
+    const wrapper = "https://myhealth.example.org/signedin/";
+    const home = "https://mychart.example.org/myhealth_sso/Home/";
+    const requests: { method: string; url: string }[] = [];
+    const context = await browser!.newContext();
+    try {
+      await context.route("**/*", async (route) => {
+        const req = route.request();
+        requests.push({ method: req.method(), url: req.url() });
+        const url = new URL(req.url());
+        if (req.url() === wrapper) {
+          await route.fulfill({
+            contentType: "text/html",
+            body: '<html><body>Portal<iframe src="https://mychart.example.org/myhealth_sso/inside.asp?sso=synthetic#private"></iframe></body></html>',
+          });
+        } else if (url.hostname === "mychart.example.org" && /^\/myhealth_sso\/(inside\.asp|Home\/)$/.test(url.pathname)) {
+          await route.fulfill({
+            contentType: "text/html",
+            body: '<html><body><input type="hidden" name="__RequestVerificationToken" value="synthetic-page-token"><script>window.EpicPx = {};</script></body></html>',
+          });
+        } else {
+          await route.fulfill({ status: 404, contentType: "text/html", body: "Not found" });
+        }
+      });
+      const page = await context.newPage();
+      await page.goto(wrapper);
+      await page.addScriptTag({ content: bundle });
+      const link = page.getByRole("link", { name: /Open mychart\.example\.org/ });
+      await link.waitFor();
+      expect(await link.getAttribute("href")).toBe(home); // no query, no hash
+      expect(await link.getAttribute("rel")).toBe("noopener noreferrer");
+      expect(context.pages()).toHaveLength(1); // nothing opens without a click
+      expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
+      expect(requests.some((r) => r.url === home)).toBe(false);
+
+      const opened = context.waitForEvent("page");
+      await link.click();
+      const direct = await opened;
+      await direct.waitForLoadState();
+      expect(direct.url()).toBe(home);
+      await direct.addScriptTag({ content: bundle });
+      await direct.getByRole("button", { name: "Export everything", exact: true }).waitFor();
+      expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  }, 30_000);
+
   test(
     "PX build, signed in: resolves the prefix via the page token and exports real data",
     async () =>
