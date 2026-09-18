@@ -5,8 +5,14 @@ import { existsSync } from "node:fs";
  * $CHROMIUM_PATH / $CHROME_PATH / $PUPPETEER_EXECUTABLE_PATH, then tries common
  * locations. Returns null when none is found so tests can skip (e.g. CI without
  * a browser) instead of failing.
+ *
+ * On CI ($CI set) it returns null unless a path is given explicitly: GitHub's
+ * runners DO ship a Chrome, but the raw-CDP launch there is flaky (never prints
+ * its DevTools endpoint), so the browser suites stay local-only for now.
  */
 export function findChromium(): string | null {
+  const explicit = process.env.CHROMIUM_PATH || process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (process.env.CI && !explicit) return null;
   const candidates = [
     process.env.CHROMIUM_PATH,
     process.env.CHROME_PATH,
