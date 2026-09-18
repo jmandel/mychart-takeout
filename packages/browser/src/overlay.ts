@@ -60,6 +60,8 @@ export interface Overlay {
    *  embedded here — open it directly"); it opens in a new tab. */
   setFailed(message: string, link?: { label: string; href: string }): void;
   onDebug(fn: () => Promise<string>): void;
+  /** Remove the panel (same as ✕). */
+  close(): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -306,6 +308,9 @@ export function ensureOverlay(): Overlay {
     },
     onDebug(fn: () => Promise<string>) {
       debugFn = fn;
+    },
+    close() {
+      host.remove();
     },
 
     setChecking(msg: string) {

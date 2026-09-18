@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="#1f6feb"/>
+  <!-- a chart line arriving in a takeout tray: your record, downloaded -->
+  <path d="M30 50h14l8-16 12 32 8-16h26" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>
+  <path d="M64 58v30m-13-12 13 13 13-13" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 84v12a6 6 0 0 0 6 6h52a6 6 0 0 0 6-6V84" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

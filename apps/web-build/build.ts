@@ -2,11 +2,15 @@
 /**
  * Emit the in-browser exporter + a self-contained landing page (GitHub Pages):
  *   dist/index.html       — landing / explainer with the drag-to-install button
+ *   dist/privacy.html     — privacy policy (linked from the Chrome Web Store listing)
  *   dist/console.js       — paste into DevTools on a signed-in MyChart tab
  *   dist/bookmarklet.txt  — the javascript: URL, for manual bookmark creation
+ *   dist/extension/       — the Chrome extension, unpacked (same bundle as takeout.js)
+ *   dist/extension.zip    — …zipped for the Chrome Web Store
  */
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import { zipSync } from "../../packages/browser/src/zip";
 import { buildBrowserBundle } from "./bundle";
 
 const SIZE_BUDGET = 300 * 1024;
@@ -23,14 +27,93 @@ writeFileSync(join(dist, "bookmarklet.txt"), bookmarklet);
 // href-safe: the encoded bundle has no quotes, but escape defensively.
 const href = bookmarklet.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 writeFileSync(join(dist, "index.html"), landingPage(href));
+writeFileSync(join(dist, "privacy.html"), privacyPage());
 writeFileSync(join(dist, ".nojekyll"), "");
 
+// The extension is its static files (apps/extension) + the bundle, verbatim.
+const extSrc = join(import.meta.dir, "..", "extension");
+const extOut = join(dist, "extension");
+rmSync(extOut, { recursive: true, force: true });
+mkdirSync(extOut, { recursive: true });
+for (const f of ["manifest.json", "background.js", "icons"]) cpSync(join(extSrc, f), join(extOut, f), { recursive: true });
+rmSync(join(extOut, "icons", "icon.svg")); // source art; the store wants PNGs only
+writeFileSync(join(extOut, "takeout.js"), code);
+const zipEntries: Record<string, Uint8Array> = {};
+const walk = (dir: string): void => {
+  for (const name of readdirSync(dir).sort()) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) walk(p);
+    else zipEntries[relative(extOut, p)] = new Uint8Array(readFileSync(p));
+  }
+};
+walk(extOut);
+const extZip = zipSync(zipEntries);
+writeFileSync(join(dist, "extension.zip"), extZip);
+
 console.log(`dist/index.html      landing page`);
+console.log(`dist/extension.zip   ${(extZip.length / 1024).toFixed(1)} KB`);
 console.log(`dist/console.js      ${(code.length / 1024).toFixed(1)} KB`);
 console.log(`dist/bookmarklet.txt ${(bookmarklet.length / 1024).toFixed(1)} KB`);
 if (code.length > SIZE_BUDGET) {
   console.error(`FAIL: console.js exceeds ${SIZE_BUDGET / 1024} KB budget`);
   process.exit(1);
+}
+
+/** The privacy policy the Chrome Web Store listing links to. Every claim here
+ *  must stay true of the code: no server, no telemetry, no remote code. */
+function privacyPage(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyChart Takeout — privacy policy</title>
+<style>
+  body { margin: 0 auto; max-width: 720px; padding: 48px 20px 80px; color: #16202c; background: #f7f8fa;
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  @media (prefers-color-scheme: dark) { body { color: #e6edf3; background: #0d1117; } a { color: #4b93ff; } }
+  h1 { font-size: 32px; line-height: 1.15; } h2 { font-size: 20px; margin-top: 36px; }
+</style>
+</head>
+<body>
+<h1>MyChart Takeout — privacy policy</h1>
+<p>MyChart Takeout (the bookmarklet and the browser extension) exports <em>your own</em> health record
+from an Epic MyChart patient portal you are signed in to. This policy covers both.</p>
+
+<h2>We collect nothing</h2>
+<p>The tool has no server, no account, no analytics and no telemetry. Its author never receives your
+health data, your portal credentials, your browsing activity, or anything else.</p>
+
+<h2>What the tool does with your data</h2>
+<p>When you start an export, the tool reads your record from your portal using the session you are
+already signed in with, inside your own browser tab. It assembles a ZIP file in that tab's memory and
+offers it to you as a download. The only network requests it makes go to the portal you are on. Closing
+the tab discards everything that wasn't downloaded. A small run log (request paths and outcomes — no
+record contents) is kept in the tab's session storage so a failed run can be diagnosed; it is cleared
+when the tab closes.</p>
+
+<h2>Browser extension permissions</h2>
+<p>The extension does nothing until you click its toolbar button. <code>activeTab</code> gives it access
+to the one tab you clicked it on, at that moment; <code>scripting</code> lets it start the exporter in
+that tab. It requests no access to any site in advance, runs nothing in the background, and loads no
+remote code — everything it runs ships inside the extension.</p>
+
+<h2>Debug reports</h2>
+<p>If something fails you can click <strong>Debug</strong> to produce a text report. It is shown to you
+first and is sent nowhere; sharing it is your choice. It is designed to leave out record contents, but
+it names your health system, so share it privately.</p>
+
+<h2>Your export is yours to protect</h2>
+<p>The downloaded ZIP contains sensitive health information. Once it is on your computer, keeping it safe
+is up to you.</p>
+
+<h2>Contact</h2>
+<p>Questions or concerns: <a href="${REPO}/issues">${REPO}/issues</a>. The full source code is public at
+<a href="${REPO}">${REPO}</a>.</p>
+<p><a href="./">← MyChart Takeout</a></p>
+</body>
+</html>
+`;
 }
 
 function landingPage(bmHref: string): string {
@@ -187,7 +270,7 @@ function landingPage(bmHref: string): string {
   <footer>
     MyChart Takeout is an independent open-source tool and is not affiliated with or endorsed by
     Epic Systems. “MyChart” and “Epic” are trademarks of Epic Systems Corporation.
-    &nbsp;·&nbsp; <a href="${REPO}">GitHub</a>
+    &nbsp;·&nbsp; <a href="privacy.html">Privacy</a> &nbsp;·&nbsp; <a href="${REPO}">GitHub</a>
   </footer>
 </div>
 </body>

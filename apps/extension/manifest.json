@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "MyChart Takeout",
+  "version": "0.1.0",
+  "description": "Export all of your own health data from an Epic MyChart patient portal. Runs entirely in your browser; nothing is uploaded.",
+  "homepage_url": "https://github.com/jmandel/mychart-takeout",
+  "minimum_chrome_version": "111",
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "action": { "default_title": "Export this MyChart" },
+  "background": { "service_worker": "background.js" },
+  "permissions": ["activeTab", "scripting"]
+}

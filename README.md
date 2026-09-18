@@ -57,6 +57,11 @@ bun apps/cli/src/main.ts whereami            # probe verbs: targets, goto,
 bun run build:web                            # emits apps/web-build/dist/
 # paste dist/console.js into DevTools on a signed-in MyChart tab,
 # or install dist/bookmarklet.txt as a bookmark; click Start → download ZIP
+
+# Chrome extension (same bundle, injected on toolbar click — and into embedded
+# MyChart frames, so wrapper portals need no new tab):
+#   chrome://extensions → Developer mode → Load unpacked → dist/extension/
+#   dist/extension.zip is the Web Store upload (see apps/extension/STORE.md)
 ```
 
 Re-run any time you're signed in; it always pulls fresh data. Output lands
@@ -123,7 +128,10 @@ packages/cdp/          Bun-side driver: CDP session, in-page fetch bridge,
 packages/browser/      in-page driver: page-fetch client, zip sink, census,
                        progress overlay
 apps/cli/              bun CLI: export/report + probe verbs (agent surface)
-apps/web-build/        builds dist/console.js + dist/bookmarklet.txt
+apps/web-build/        builds dist/console.js + dist/bookmarklet.txt + the
+                       landing/privacy pages + dist/extension(.zip)
+apps/extension/        Chrome extension shell: manifest, service worker, icons,
+                       store listing text (the exporter itself is the bundle)
 tools/mock-mychart/    synthetic-patient mock instance (CI target, no PHI)
 tools/parity.ts        export tree diff (paths/keys/counts only — no values)
 launch_browser.sh      start Chromium into the MyChart profile with CDP
@@ -159,6 +167,7 @@ fixture trees. The Python was then deleted (git history keeps it).
   another origin, where the bookmarklet can't reach it. When a same-site,
   https, MyChart-looking frame is present, the overlay offers a link to the
   embedded app's `<prefix>/Home/`; run the bookmarklet again in that tab.
+  The extension injects into the embedded frame directly when Chrome lets it.
 - **FHIR R4** needs a registered OAuth2 `client_id`; MyChart session cookies
   don't authenticate it. The internal API yields the same clinical facts and
   the C-CDA is the standards-format export.

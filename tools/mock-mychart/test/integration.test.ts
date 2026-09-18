@@ -4,6 +4,8 @@
  * and verify the produced zip — the exact bookmarklet/console-paste path.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+// FIRST (see extension.test.ts): makes core's fflate resolvable when this file runs first/alone.
+import "@mychart/core";
 import { chromium, type Browser } from "playwright-core";
 import { unzipSync } from "../../../packages/browser/src/zip";
 import { buildBrowserBundle } from "../../../apps/web-build/bundle";

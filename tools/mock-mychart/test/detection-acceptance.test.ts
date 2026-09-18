@@ -21,6 +21,8 @@
  * as the other e2e suites).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+// FIRST (see extension.test.ts): makes core's fflate resolvable when this file runs first/alone.
+import "@mychart/core";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { unzipSync } from "../../../packages/browser/src/zip";
 import { buildBrowserBundle } from "../../../apps/web-build/bundle";

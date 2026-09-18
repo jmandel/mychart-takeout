@@ -11,7 +11,16 @@ import { BUILD } from "./buildInfo";
 import { runCensus } from "./census";
 import { BrowserClient, derivePrefix } from "./client";
 import { collectDebugReport } from "./debug";
-import { cookiesAreLive, embeddedMyChartOnPage, ladderTranscript, pageToken, preflightMyChart, resolveMyChart, resolvedMyChart } from "./detect";
+import {
+  cookiesAreLive,
+  embeddedMyChartOnPage,
+  ladderTranscript,
+  pageToken,
+  preflightMyChart,
+  pxMarkers,
+  resolveMyChart,
+  resolvedMyChart,
+} from "./detect";
 import { capturedRequests, installNetCapture, observedApiPaths, resourceApiEntries } from "./netcapture";
 import { exportFilename } from "./filename";
 import {
@@ -205,21 +214,44 @@ declare global {
   var __mychartExport: { run(opts?: RunOpts): Promise<Uint8Array> } | undefined;
 }
 
-// Patch fetch/XHR as early as possible so we can observe how the app itself
-// authenticates its API calls (for the "app works, our fetches don't" case).
-installNetCapture();
+/**
+ * Which frame are we in? The bookmarklet only ever runs top-level, but the
+ * browser extension injects into EVERY frame it may touch — that's how it
+ * reaches a MyChart that a wrapper portal iframes from another origin, with no
+ * new tab. Exactly one frame should speak up:
+ *  - "top": always (today's behavior);
+ *  - "embedded": a CROSS-origin subframe that looks like MyChart before any
+ *    network call (token input, PX globals, or a telltale URL) — it shows the
+ *    overlay only once preflight confirms, and tells the top frame to yield;
+ *  - "ignore": everything else. Same-origin subframes are the top frame's own
+ *    app (document viewers etc.); ad/video frames get zero requests from us.
+ */
+function frameRole(): "top" | "embedded" | "ignore" {
+  if (window.top === window) return "top";
+  try {
+    void window.top!.location.href; // throws when cross-origin
+    return "ignore";
+  } catch {
+    /* cross-origin subframe — fall through */
+  }
+  const telltale = /mychart|\/inside\.asp$/i.test(location.host + location.pathname);
+  return pageToken() || pxMarkers() || telltale ? "embedded" : "ignore";
+}
 
-globalThis.__mychartExport = { run };
+const EMBEDDED_READY = { source: "mychart-takeout", type: "embedded-ready" } as const;
+const role = frameRole();
 
-// Interactive path: show the overlay, but only reveal Start once we've
-// confirmed this is a signed-in MyChart page — so the wrong page never offers
-// a button that would just fail.
-// Start this run's journal (startRun stashes any prior crashed run first) — so
-// even the on-load detection probes are recorded, and a previous unfinished run
-// is available to the Debug report.
-startRun(location.host, derivePrefix(location.pathname));
+if (role !== "ignore") {
+  // Patch fetch/XHR as early as possible so we can observe how the app itself
+  // authenticates its API calls (for the "app works, our fetches don't" case).
+  installNetCapture();
+  globalThis.__mychartExport = { run };
+  // Start this run's journal (startRun stashes any prior crashed run first) — so
+  // even the on-load detection probes are recorded, and a previous unfinished run
+  // is available to the Debug report.
+  startRun(location.host, derivePrefix(location.pathname));
+}
 
-const overlay = ensureOverlay();
 // run() sets its own failure banner on a failed preflight; for anything else
 // that throws, surface it as a failed state (not a stuck "Exporting…").
 const startRunSafely = (o: RunOpts): void => {
@@ -227,12 +259,10 @@ const startRunSafely = (o: RunOpts): void => {
     const msg = e instanceof Error ? e.message : String(e);
     finish("error", msg);
     if (!/signed-in MyChart page|signed out of MyChart|candidates authenticated/i.test(msg)) {
-      overlay.setFailed(`Export failed: ${msg}`);
+      ensureOverlay().setFailed(`Export failed: ${msg}`);
     }
   });
 };
-// The Debug button works in any state — especially when detection fails.
-overlay.onDebug(() => collectDebugReport());
 
 function authFailureMessage(): string {
   return pageToken()
@@ -244,6 +274,7 @@ function authFailureMessage(): string {
 /** "scan first & choose" — verify, census (reads + cancelled headers only),
  *  then the selection card. The big default button skips all of this. */
 async function scanFirst(): Promise<void> {
+  const overlay = ensureOverlay();
   overlay.setBusy("Verifying sign-in…");
   const resolved = await resolveMyChart();
   if (!resolved) {
@@ -269,51 +300,89 @@ async function scanFirst(): Promise<void> {
   }
 }
 
-// If a previous export in this tab didn't finish (it may have logged the user
-// out and reloaded the tab), point them at Debug — the report includes that
-// run's journal, whose last live request is the likely culprit. (No "recovery":
-// these failures repeat, so restarting is as good as resuming, and Start is
-// still there to try again.)
-const crashed = priorCrashedRun();
-if (crashed) {
-  const culprit = likelyCulprit(crashed);
-  overlay.log(
-    `⚠ A previous export here didn't finish${culprit ? ` (last request: ${culprit})` : ""} — it may have logged you out.`,
-  );
-  overlay.log("   Click Debug to capture what happened (and Start to try again).");
+/** Overlay + Debug + the crashed-run notice. Interactive path: only reveal
+ *  Start once we've confirmed this is a signed-in MyChart page — so the wrong
+ *  page never offers a button that would just fail. */
+function showOverlay(): ReturnType<typeof ensureOverlay> {
+  const overlay = ensureOverlay();
+  // The Debug button works in any state — especially when detection fails.
+  overlay.onDebug(() => collectDebugReport());
+  // If a previous export in this tab didn't finish (it may have logged the user
+  // out and reloaded the tab), point them at Debug — the report includes that
+  // run's journal, whose last live request is the likely culprit. (No "recovery":
+  // these failures repeat, so restarting is as good as resuming, and Start is
+  // still there to try again.)
+  const crashed = priorCrashedRun();
+  if (crashed) {
+    const culprit = likelyCulprit(crashed);
+    overlay.log(
+      `⚠ A previous export here didn't finish${culprit ? ` (last request: ${culprit})` : ""} — it may have logged you out.`,
+    );
+    overlay.log("   Click Debug to capture what happened (and Start to try again).");
+  }
+  return overlay;
+}
+
+function showReady(overlay: ReturnType<typeof ensureOverlay>): void {
+  overlay.log(`This looks like a signed-in MyChart page (${location.host}).`);
+  overlay.setReady({
+    onExportAll: () => startRunSafely({}),
+    onScanFirst: () => void scanFirst(),
+  });
 }
 
 // GET-only preflight: show the Ready state when this looks like a signed-in
 // MyChart page, without sending a single POST. Verification — the part that
 // can trip Epic's anti-CSRF session kill — waits for the user's explicit
-// click, so merely loading the bookmarklet can never sign anyone out.
-void (async () => {
-  const state = await preflightMyChart();
-  const embedded = state === "likely" ? null : embeddedMyChartOnPage();
-  if (state === "likely") {
-    overlay.log(`This looks like a signed-in MyChart page (${location.host}).`);
-    overlay.setReady({
-      onExportAll: () => startRunSafely({}),
-      onScanFirst: () => void scanFirst(),
-    });
-  } else if (embedded) {
-    // A health-system portal wrapping MyChart in a cross-origin iframe: we
-    // can't reach into it from here, but the user can open it top-level.
-    overlay.log(`Embedded MyChart frame found → ${embedded}`);
-    overlay.setFailed(
-      `MyChart is embedded inside this page (${location.host}), where this tool can't reach it.\n` +
-        "Open MyChart directly in a new tab (it may look broken outside its frame — the export is unaffected), then run the bookmarklet again there.",
-      { label: `Open ${new URL(embedded).host} ↗`, href: embedded },
-    );
-  } else if (state === "signed-out") {
-    overlay.setFailed(
-      `You don't appear to be signed in to MyChart (${location.host}).\n` +
-        "Sign in, then run the bookmarklet again — or click Debug to make a report to share privately with Josh.",
-    );
-  } else {
-    overlay.setFailed(
-      `This doesn't look like a MyChart page (${location.host}).\n` +
-        "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",
-    );
-  }
-})();
+// click, so merely loading the tool can never sign anyone out.
+if (role === "embedded") {
+  // Silent unless confirmed: a frame that isn't signed-in MyChart shows nothing
+  // (the top frame's overlay already explains what's wrong).
+  void (async () => {
+    if ((await preflightMyChart()) !== "likely") return;
+    window.top!.postMessage(EMBEDDED_READY, "*"); // carries no data — "*" is fine
+    showReady(showOverlay());
+  })();
+} else if (role === "top") {
+  const overlay = showOverlay();
+  // An embedded frame took over (see frameRole): unless this page is itself
+  // MyChart, its overlay would only say "not MyChart here" — yield.
+  let topIsMyChart = false;
+  let embeddedTookOver = false;
+  window.addEventListener("message", (e) => {
+    const d = e.data as { source?: unknown; type?: unknown } | null;
+    if (e.source === window || d?.source !== EMBEDDED_READY.source || d?.type !== EMBEDDED_READY.type) return;
+    embeddedTookOver = true;
+    if (!topIsMyChart) overlay.close();
+  });
+  void (async () => {
+    const state = await preflightMyChart();
+    if (state === "likely") {
+      topIsMyChart = true;
+      showReady(overlay);
+      return;
+    }
+    if (embeddedTookOver) return;
+    const embedded = embeddedMyChartOnPage();
+    if (embedded) {
+      // A health-system portal wrapping MyChart in a cross-origin iframe: we
+      // can't reach into it from here, but the user can open it top-level.
+      overlay.log(`Embedded MyChart frame found → ${embedded}`);
+      overlay.setFailed(
+        `MyChart is embedded inside this page (${location.host}), where this tool can't reach it.\n` +
+          "Open MyChart directly in a new tab (it may look broken outside its frame — the export is unaffected), then run MyChart Takeout again there.",
+        { label: `Open ${new URL(embedded).host} ↗`, href: embedded },
+      );
+    } else if (state === "signed-out") {
+      overlay.setFailed(
+        `You don't appear to be signed in to MyChart (${location.host}).\n` +
+          "Sign in, then run MyChart Takeout again — or click Debug to make a report to share privately with Josh.",
+      );
+    } else {
+      overlay.setFailed(
+        `This doesn't look like a MyChart page (${location.host}).\n` +
+          "Open your MyChart portal, sign in, then run it there — or click Debug to make a report to share privately with Josh.",
+      );
+    }
+  })();
+}

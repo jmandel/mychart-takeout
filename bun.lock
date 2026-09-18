@@ -21,6 +21,10 @@
         "@mychart/core": "workspace:*",
       },
     },
+    "apps/extension": {
+      "name": "@mychart/extension",
+      "version": "0.1.0",
+    },
     "apps/web-build": {
       "name": "@mychart/web-build",
       "version": "0.1.0",
@@ -67,6 +71,8 @@
     "@mychart/cli": ["@mychart/cli@workspace:apps/cli"],
 
     "@mychart/core": ["@mychart/core@workspace:packages/core"],
+
+    "@mychart/extension": ["@mychart/extension@workspace:apps/extension"],
 
     "@mychart/mock-mychart": ["@mychart/mock-mychart@workspace:tools/mock-mychart"],
 
