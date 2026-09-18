@@ -47,5 +47,30 @@ with `bun run build:web` → `dist/extension.zip`; screenshots with
 ## Releasing an update
 
 Bump `version` in the root `package.json` (the build stamps it into the
-manifest; the source manifest's `0.0.0` is a placeholder), rebuild, upload the new zip
-in the dashboard (Package → Upload new package), submit for review.
+manifest; the source manifest's `0.0.0` is a placeholder), commit, then:
+
+    git tag v0.2.0 && git push --tags
+
+`.github/workflows/release-extension.yml` builds, uploads `dist/extension.zip`
+and submits it for review. Listing text/screenshots are NOT part of a release —
+change those in the dashboard. Manual fallback: dashboard → Package → Upload
+new package → Submit for review.
+
+How the workflow is authorized (nothing secret is stored anywhere):
+
+- Item `dcbkoehpepphdpogobmmalnmajkjeiln`, publisher
+  `f8ff9891-0d06-4d4f-a725-f3634444f5dd` (repo variables `CWS_EXTENSION_ID`,
+  `CWS_PUBLISHER_ID`).
+- GCP project `bionic-freehold-593`: service account
+  `cws-publisher@bionic-freehold-593.iam.gserviceaccount.com`, registered in the
+  dashboard under Settings → Service account (one allowed per publisher).
+- Workload Identity pool `github`, provider `mychart-takeout`: accepts GitHub
+  OIDC tokens only from `jmandel/mychart-takeout` runs on `refs/tags/v*`.
+- `jmandel@gmail.com` may impersonate the service account, for checking status
+  from a laptop:
+
+      T=$(gcloud auth print-access-token --impersonate-service-account \
+            cws-publisher@bionic-freehold-593.iam.gserviceaccount.com \
+            --scopes https://www.googleapis.com/auth/chromewebstore)
+      curl -H "Authorization: Bearer $T" \
+        https://chromewebstore.googleapis.com/v2/publishers/<publisher>/items/<item>:fetchStatus
