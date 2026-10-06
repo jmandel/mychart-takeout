@@ -10,7 +10,7 @@
  * (verified against a production instance where this technique priced a 63 MB
  * scan without downloading it).
  */
-import { extractAttachmentRef, isLoggedOutUrl, Mc } from "@mychart/core";
+import { extractAttachmentRef, folderTags, isLoggedOutUrl, Mc } from "@mychart/core";
 import { BrowserClient } from "./client";
 import type { Resolved } from "./detect";
 import { step } from "./journal";
@@ -160,7 +160,14 @@ export async function runCensus(
   onStatus("Scanning messages for attachments…");
   const flagged: { hthId: string; organizationId: string; subject: string }[] = [];
   const seen = new Set<string>();
-  for (const tag of [1, 2, 3, 4, 5, 6]) {
+  // Same folder set as the export phase: 1–6 plus every tag the portal lists.
+  let tags = folderTags(null);
+  try {
+    tags = folderTags((await mc.api("api/conversations/GetFoldersList", {})).json);
+  } catch {
+    /* fall back to 1–6 */
+  }
+  for (const tag of tags) {
     try {
       const r = await mc.api("api/conversations/GetConversationList", {
         tag,
@@ -191,6 +198,7 @@ export async function runCensus(
         id: t.hthId,
         messageId: "",
         organizationId: t.organizationId,
+        maxReadMessages: 9999, // default is the newest 5 — attachments hide in older ones
         PageNonce: "census",
       });
       const dj = rec(d.json);

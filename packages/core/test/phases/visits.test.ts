@@ -121,7 +121,7 @@ describe("visits phase", () => {
     expect(sink.has("structured/visits/past_page_3.json")).toBe(false);
   });
 
-  test("stops at the 60-page cap even when more data is advertised", async () => {
+  test("a page bound reached while more data is advertised is recorded as incomplete", async () => {
     let n = 0;
     const c = new FakeClient({
       "Visits/VisitsList/LoadPast": () => ({
@@ -131,7 +131,9 @@ describe("visits phase", () => {
     });
     const { ctx } = makeTestCtx(c);
     await phases.visits(ctx);
-    expect(c.calls.filter((x) => x.url.includes("LoadPast")).length).toBe(61);
+    expect(c.calls.filter((x) => x.url.includes("LoadPast")).length).toBe(500);
+    const row = ctx.manifest.find((m) => m.endpoint === "LoadPast[completeness]");
+    expect(row?.outcome).toBe("incomplete");
   });
 
   test("stops immediately on empty/non-JSON page (python falsy check)", async () => {

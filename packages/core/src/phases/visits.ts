@@ -44,31 +44,47 @@ export async function visits(ctx: PhaseCtx): Promise<void> {
   } catch (e) {
     ctx.log(`  ERR upcoming ${e}`);
   }
-  // past (paginate serializedIndex)
+  // past (paginate serializedIndex). Complete only when no organization
+  // reports HasMoreData; any other stop is recorded as incomplete (paging.ts).
   let sidx = "";
   let page = 0;
+  let stop = "";
   for (;;) {
     page += 1;
+    if (ctx.signal.aborted) {
+      stop = `run stopped (${ctx.signal.reason})`;
+      break;
+    }
     const url =
       `Visits/VisitsList/LoadPast?loadpast=1&searchString=&oldestRenderedDate=` +
       `&ComponentNumber=7&serializedIndex=${sidx}&noCache=${ctx.nonce}${page}`;
     const r = await ctx.mc.nobody(url);
     const j = r.json;
     ctx.rec("visits", `LoadPast[p${page}]`, r);
-    if (!pyTruthy(j)) break;
+    if (!pyTruthy(j)) {
+      if (page > 1 || r.json == null) stop = `page ${page} returned no data`;
+      break;
+    }
     await ctx.store.saveJson(`structured/visits/past_page_${page}.json`, j);
     const nxt = isRecord(j) && typeof j.SerializedIndex === "string" ? j.SerializedIndex : "";
     // HasMoreData is a bool nested per-org; detect any true
-    const more = anyTrueDeep(j, "hasmoredata");
-    if (more && !nxt) {
-      // The instance says there's more but the pagination cursor field we know
-      // is missing — record the truncation instead of silently stopping.
-      ctx.rec("visits", "LoadPast[cursor]", null, `hasMoreData true but no SerializedIndex (top keys: ${topKeys(j)})`, {
-        outcome: "shape-mismatch",
-      });
+    if (!anyTrueDeep(j, "hasmoredata")) break; // the server's end signal
+    if (!nxt) {
+      stop = `HasMoreData true but no SerializedIndex (top keys: ${topKeys(j)})`;
+      break;
     }
-    if (!more || !nxt || nxt === sidx || page > 60) break;
+    if (nxt === sidx) {
+      stop = "HasMoreData true but the cursor stopped advancing";
+      break;
+    }
+    if (page >= 500) {
+      stop = "page bound (500) reached while HasMoreData was still true";
+      break;
+    }
     sidx = nxt;
+  }
+  if (stop) {
+    ctx.rec("visits", "LoadPast[completeness]", null, `INCOMPLETE — ${stop}`, { outcome: "incomplete" });
   }
   // AVS + notes per CSN
   const docs = ctx.store.listJson("structured/visits/past_page_").map(([, v]) => v);

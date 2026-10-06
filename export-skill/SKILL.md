@@ -60,7 +60,8 @@ structured/                   SOURCE OF TRUTH — raw JSON per domain, e.g.:
                               your data via OAuth); paginated 50/page
   track-my-health/            patient-tracked vitals (flowsheet readings)
   test-results/
-    GetList.json              all result orders
+    GetList.json              result-order list (first page, as returned)
+    GetList_page_N.json       further pages, when the portal paged the list
     details/NN_<name>.json    per-order component values, units, reference
                               ranges, abnormal flags, radiology/path narratives
   visits/
@@ -106,6 +107,11 @@ Two things to watch for there:
   expected — the note names the payload's top-level keys), and a
   `substituted-path` note (the data was recovered from an alternate URL the
   portal itself uses).
+- `incomplete` means a list stopped before the portal said it was finished
+  (a failed page, a run that stopped early, or a safety bound), so items past
+  that point are missing even though every request succeeded. Lists count as
+  complete only on the portal's own end signal; a reassuring detail count only
+  covers the items that were discovered.
 
 ## Provenance: this record may combine multiple health systems
 

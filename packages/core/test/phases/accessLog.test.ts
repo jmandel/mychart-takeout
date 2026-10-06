@@ -29,14 +29,40 @@ describe("accessLog phase", () => {
     expect(ctx.manifest.some((m) => m.endpoint === "third-party/GetEntries")).toBe(true);
   });
 
-  test("stops on a repeated cursor (Epic's known quirk)", async () => {
+  test("a repeated cursor is NOT the end: keeps paging until nextLineToParse is -1", async () => {
+    // Observed live: the third-party log returns nextLineToParse 1 on every
+    // page while serving new rows (635 pages); only -1 ends the list.
+    let n = 0;
+    const page = () => (++n < 5 ? { entries: [{ x: n }], nextLineToParse: 1 } : { entries: [{ x: n }], nextLineToParse: -1 });
     const c = new FakeClient({
-      "api/access-logs/GetPortalAccessLogEntries": () => ({ entries: [{ x: 1 }], nextLineToParse: 1 }),
-      "api/access-logs/GetThirdPartyAccessLogEntries": () => ({ entries: [{ x: 1 }], nextLineToParse: 1 }),
+      "api/access-logs/GetPortalAccessLogEntries": () => ({ entries: [], nextLineToParse: -1 }),
+      "api/access-logs/GetThirdPartyAccessLogEntries": page,
     });
     const { ctx, sink } = makeTestCtx(c);
     await phases.accessLog(ctx);
-    // cursor -1 → 1, then 1 → 1 repeats: at most a couple of pages, never runaway
-    expect(sink.keys("structured/access-log/portal_page_").length).toBeLessThanOrEqual(3);
+    expect(sink.keys("structured/access-log/third-party_page_").length).toBe(5);
+    expect(ctx.manifest.some((m) => m.outcome === "incomplete")).toBe(false);
+  });
+
+  test("-1 ends the list — it is never sent back as a cursor (it would restart at page 1)", async () => {
+    const c = new FakeClient({
+      "api/access-logs/GetPortalAccessLogEntries": () => ({ entries: [{ x: 1 }], nextLineToParse: -1 }),
+      "api/access-logs/GetThirdPartyAccessLogEntries": () => ({ entries: [], nextLineToParse: -1 }),
+    });
+    const { ctx, sink } = makeTestCtx(c);
+    await phases.accessLog(ctx);
+    expect(sink.keys("structured/access-log/portal_page_").length).toBe(1);
+  });
+
+  test("a server that never ends and never adds anything stops on the backstop and SAYS so", async () => {
+    const c = new FakeClient({
+      "api/access-logs/GetPortalAccessLogEntries": () => ({ entries: [{ x: 1 }], nextLineToParse: 1 }),
+      "api/access-logs/GetThirdPartyAccessLogEntries": () => ({ entries: [], nextLineToParse: -1 }),
+    });
+    const { ctx, sink } = makeTestCtx(c);
+    await phases.accessLog(ctx);
+    expect(sink.keys("structured/access-log/portal_page_").length).toBeLessThanOrEqual(7);
+    const row = ctx.manifest.find((m) => m.endpoint === "portal/GetEntries[completeness]");
+    expect(row?.outcome).toBe("incomplete");
   });
 });
