@@ -108,6 +108,11 @@ bun run build:web        # emits dist/{index.html, console.js, bookmarklet.txt}
 - Console alternative: DevTools → Console → type `allow pasting` → paste
   `console.js` → `await __mychartExport.run({ ccda: true, dom: false })`.
 - The ZIP is named `mychart-export-<host>-<Patient>.zip`.
+- Record phases share a 15-minute request budget. Access logs run last with
+  their own 15-minute budget. Existing logout/circuit-breaker aborts are never
+  cleared to start them. An in-flight request can finish past its deadline,
+  subject to its request timeout. Partial downloads are labeled on the main
+  card, and unattempted selected phases are listed in `gaps.json`/`GAPS.md`.
 
 ## Testing & validating (do this after every change)
 

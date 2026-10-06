@@ -1,8 +1,8 @@
 /**
- * Progress overlay for the in-page exporter — a four-state machine, not a
+ * Progress overlay for the in-page exporter — a state machine, not a
  * growing panel. Each state owns ONE primary action and one status line:
  *
- *   checking → ready → busy → done | failed        (+ select, via "scan first")
+ *   checking → ready → busy → done | partial | failed (+ select, via "scan first")
  *
  * Anti-accretion rules this file encodes: nothing is always-visible except
  * the title bar and the footer (details-toggle · byte counter · Debug); every
@@ -55,7 +55,7 @@ export interface Overlay {
   /** One-line status; safe to call repeatedly (updates in place). */
   setBusy(status: string): void;
   setSelect(census: Census, onExport: (sel: Selection) => void): void;
-  setDone(zip: Uint8Array, filename?: string): void;
+  setDone(zip: Uint8Array, filename?: string, warning?: string): void;
   /** `link` is the one escape hatch a failure may offer (e.g. "MyChart is
    *  embedded here — open it directly"); it opens in a new tab. */
   setFailed(message: string, link?: { label: string; href: string }): void;
@@ -436,8 +436,9 @@ export function ensureOverlay(): Overlay {
       render("select", statusLine("Your record contains:"), list, go);
     },
 
-    setDone(zip: Uint8Array, filename = "mychart-export.zip") {
-      const dl = button(`Download ${filename} (${fmtBytes(zip.length)})`, T.good);
+    setDone(zip: Uint8Array, filename = "mychart-export.zip", warning?: string) {
+      const label = warning ? "Download partial export" : `Download ${filename}`;
+      const dl = button(`${label} (${fmtBytes(zip.length)})`, warning ? T.accent : T.good);
       dl.addEventListener("click", () => {
         const url = URL.createObjectURL(new Blob([zip.buffer as ArrayBuffer], { type: "application/zip" }));
         const a = document.createElement("a");
@@ -446,7 +447,13 @@ export function ensureOverlay(): Overlay {
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       });
-      render("done", statusLine("Done — safe to close."), dl, dismissRow());
+      if (warning) {
+        const banner = el("div", `background:${T.bad};color:#fff;padding:8px 10px;border-radius:6px;`, warning);
+        banner.setAttribute("role", "alert");
+        render("partial", banner, dl, dismissRow());
+      } else {
+        render("done", statusLine("Done — safe to close."), dl, dismissRow());
+      }
     },
 
     setFailed(message: string, link?: { label: string; href: string }) {

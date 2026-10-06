@@ -6,7 +6,7 @@
  * phase in browser mode (we only see our own requests — no passive network
  * log) and no page rendering: every captured fact comes from the JSON API.
  */
-import { buildReport, makeCtx, OTHER_DOCUMENTS_LIST_KEY, phases, renderGapsMd, summarizeGaps } from "@mychart/core";
+import { buildReport, makeCtx, OTHER_DOCUMENTS_LIST_KEY, renderGapsMd, summarizeGaps } from "@mychart/core";
 import { BUILD } from "./buildInfo";
 import { runCensus } from "./census";
 import { BrowserClient, derivePrefix } from "./client";
@@ -35,9 +35,10 @@ import {
 } from "./journal";
 import { ensureOverlay } from "./overlay";
 import { resetProgress } from "./progress";
+import { BROWSER_BUDGETS, runBrowserPhases, type ExportSelection } from "./runPhases";
 import { ZipSink } from "./zipSink";
 
-export interface RunOpts {
+export interface RunOpts extends ExportSelection {
   /** Also request/download the standards C-CDA package (async server-side). */
   ccda?: boolean;
   /** Category filter from the selection card; omitted = everything (default). */
@@ -108,9 +109,6 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     // The ladder already verified this token with a real API call — seed it so
     // the run never refetches an unverified one from a different source.
     initialToken: resolved.token,
-    // Hard wall-clock backstop: slow-but-not-timing-out instances must not
-    // grind for hours; past this, remaining calls record as skipped.
-    runBudgetMs: 15 * 60_000,
     observedApiPaths,
     excludeDocIds: opts.excludeDocIds?.length ? new Set(opts.excludeDocIds) : undefined,
   });
@@ -123,28 +121,9 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   if (opts.docListJson !== undefined) {
     await ctx.store.saveJson(OTHER_DOCUMENTS_LIST_KEY, opts.docListJson);
   }
-  const order: (keyof typeof phases)[] = [
-    ...(cat.clinical ? (["structured", "testResults", "visits", "flowsheets", "accessLog"] as const) : []),
-    ...(cat.messages ? (["messages"] as const) : []),
-    ...(cat.documents ? (["documents"] as const) : []),
-    ...(opts.ccda ? (["ccda"] as const) : []),
-  ];
-  const phaseTimings: { phase: string; ms: number; abortedDuring: boolean }[] = [];
-  for (let i = 0; i < order.length; i++) {
-    const name = order[i]!;
-    if (ctx.signal.aborted) break; // logged out mid-run — stop, don't save shells
-    overlay.setBusy(`Exporting ${PHASE_LABEL[name] ?? name} (${i + 1}/${order.length})…`);
-    const t0 = Date.now();
-    try {
-      await phases[name](ctx);
-    } catch (e) {
-      // Browser mode keeps going: one broken phase shouldn't lose the rest.
-      ctx.log(`!! phase ${name} failed: ${e}`);
-      ctx.rec("phase-error", name, null, String(e));
-    } finally {
-      phaseTimings.push({ phase: name, ms: Date.now() - t0, abortedDuring: ctx.signal.aborted });
-    }
-  }
+  const phaseTimings = await runBrowserPhases(ctx, opts, (name, index, total) => {
+    overlay.setBusy(`Exporting ${PHASE_LABEL[name] ?? name} (${index}/${total})…`);
+  });
   overlay.setBusy("Building the report…");
   await ctx.store.saveJson("_manifest.json", ctx.manifest);
   const gaps = summarizeGaps(ctx.manifest, ctx.signal.aborted ? ctx.signal.reason : undefined);
@@ -177,6 +156,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
       tokenSource: resolved.source,
       detectionLadder: ladderTranscript(),
       phaseTimings,
+      timeBudgetsMs: BROWSER_BUDGETS,
       stoppedEarly: ctx.signal.aborted ? ctx.signal.reason : null,
       observedApiRequests: capturedRequests(),
       resourceTiming: resourceApiEntries(),
@@ -185,8 +165,15 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     log(`!! diagnostics failed: ${e}`);
   }
   const zip = sink.finalize();
-  overlay.setDone(zip, exportFilename(location.host, patient));
-  log(`Done: ${zip.length} bytes zipped${patient ? ` for ${patient}` : ""}.`);
+  const partial = ctx.signal.aborted || gaps.byOutcome.incomplete > 0 || gaps.skipped.length > 0;
+  const lastPhase = phaseTimings.at(-1)?.phase;
+  const warning = partial
+    ? ctx.signal.reason === "run-deadline"
+      ? `Partial export. Time limit reached during ${PHASE_LABEL[lastPhase ?? ""] ?? "export"}. See GAPS.md.`
+      : "Partial export. Some selected data could not be retrieved. See GAPS.md."
+    : undefined;
+  overlay.setDone(zip, exportFilename(location.host, patient), warning);
+  log(`${partial ? "Partial export" : "Done"}: ${zip.length} bytes zipped${patient ? ` for ${patient}` : ""}.`);
   if (ctx.signal.aborted) {
     const r = ctx.signal.reason;
     if (/^circuit-open/.test(r)) {
@@ -203,6 +190,8 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     log("⚠ No patient data was found — this export looks EMPTY.");
     log("   Click Debug (below) to make a report and share it privately with Josh.");
     finish("error", "no patient data");
+  } else if (partial) {
+    finish("error", "incomplete export; see GAPS.md");
   } else {
     finish("done");
   }
