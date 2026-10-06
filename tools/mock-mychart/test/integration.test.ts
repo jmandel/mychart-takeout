@@ -24,7 +24,7 @@ const textOf = (rel: string) => {
 
 beforeAll(async () => {
   if (!CHROMIUM) return; // no browser (e.g. CI without Chrome) — the suite is skipped
-  mock = startMockMyChart({});
+  mock = startMockMyChart({ paginateTestResults: true });
   const bundle = await buildBrowserBundle();
   browser = await chromium.launch({
     executablePath: CHROMIUM,
@@ -64,8 +64,12 @@ describe.skipIf(!CHROMIUM)("in-browser export against mock MyChart", () => {
     expect(files["structured/insurance/Insurance__Coverages__GetCoverages.json"]).toBeDefined();
   });
 
-  test("test results: list + iframe-harvested eorderid details", () => {
+  test("test results: cursor pagination + deduplicated details survive the browser ZIP", () => {
     expect(files["structured/test-results/GetList.json"]).toBeDefined();
+    expect(JSON.parse(textOf("structured/test-results/GetList.json")).newResultGroups).toHaveLength(1);
+    expect(JSON.parse(textOf("structured/test-results/GetList_page_2.json")).newResultGroups).toHaveLength(2);
+    expect(JSON.parse(textOf("structured/test-results/_pagination.json"))).toMatchObject({ completeness: "complete", pages: 2, discoveredOrders: 2 });
+    expect(mock.stats().apiPostPaths.filter((p) => p.endsWith("/test-results/GetList"))).toHaveLength(2);
     expect(JSON.parse(textOf("structured/test-results/_detail_links.json"))).toEqual(["EO1", "EO2"]);
     expect(JSON.parse(textOf("structured/test-results/details/00_CBC_With_Differential.json")).eorderid).toBe("EO1");
     expect(textOf("structured/test-results/details/01_MRI_Brain_w_o_contrast.json")).toContain("Normal study");

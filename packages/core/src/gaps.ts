@@ -25,6 +25,7 @@ export type Outcome =
   | "timeout" // the request hit its time budget and was aborted
   | "network-error" // the request never completed (connection/DNS/abort)
   | "shape-mismatch" // 2xx JSON, but without the fields this exporter expects
+  | "incomplete" // phase-level diagnostic: collection completeness was not established
   | "skipped" // not attempted (run already aborted)
   | "skipped-circuit-open" // not attempted: too many consecutive failures
   | "skipped-deadline" // not attempted: run time budget exhausted
@@ -43,6 +44,7 @@ const CONCERNING: ReadonlySet<Outcome> = new Set<Outcome>([
   "timeout",
   "network-error",
   "shape-mismatch",
+  "incomplete",
   "error",
 ]);
 
@@ -146,7 +148,7 @@ export function summarizeGaps(manifest: ManifestEntry[], stoppedEarly?: string):
       skipped.push({ domain: e.domain, endpoint: e.endpoint, note: e.note });
       continue;
     }
-    attempted++;
+    if (outcome !== "incomplete") attempted++; // completeness checks are not HTTP calls
     if (outcome === "ok") ok++;
     else if (outcome === "empty") {
       empty++;
@@ -195,7 +197,8 @@ export function renderGapsMd(g: GapsSummary): string {
         "`redirect-login` = the session lapsed mid-run; `waf-challenge` = a security " +
         "interstitial answered instead of the app; `timeout`/`network-error` = the request " +
         "never completed; `shape-mismatch` = the endpoint answered but without the expected " +
-        "fields; `server-error`/`forbidden`/`not-found` = the instance may not offer this " +
+        "fields; `incomplete` = collection completeness could not be established, even if " +
+        "individual requests succeeded; `server-error`/`forbidden`/`not-found` = the instance may not offer this " +
         "endpoint or expects different parameters. A `substituted-path` note means the call " +
         "succeeded only at an alternate path observed from the app's own traffic.*",
       "",

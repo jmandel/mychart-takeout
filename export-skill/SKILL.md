@@ -1,11 +1,14 @@
 # Working with this MyChart export
 
-You are looking at a **complete export of one person's Epic MyChart record**,
+You are looking at an **export of one person's Epic MyChart record**,
 produced by [mychart-takeout](https://github.com/jmandel/mychart-takeout). It
 is **deterministic and faithful** — every file was pulled straight from the
 patient portal's own API and documents; nothing was summarized or altered by a
 model at export time. Your job is to help the record's owner read, understand,
 and use it. This guide orients you.
+
+Check `GAPS.md` before assuming the export is complete. Successful requests
+and matching detail counts alone do not prove that every list page was fetched.
 
 ## This is the owner's PHI
 
@@ -60,7 +63,9 @@ structured/                   SOURCE OF TRUTH — raw JSON per domain, e.g.:
                               your data via OAuth); paginated 50/page
   track-my-health/            patient-tracked vitals (flowsheet readings)
   test-results/
-    GetList.json              all result orders
+    GetList.json              first result-list response, unchanged
+    GetList_page_*.json       subsequent result-list responses, unchanged
+    _pagination.json         list completeness, page/order counts, stop reason
     details/NN_<name>.json    per-order component values, units, reference
                               ranges, abnormal flags, radiology/path narratives
   visits/
@@ -106,6 +111,11 @@ Two things to watch for there:
   expected — the note names the payload's top-level keys), and a
   `substituted-path` note (the data was recovered from an alternate URL the
   portal itself uses).
+- `incomplete` means a collection could not be confirmed complete. For test
+  results, read all `GetList*.json` pages and `_pagination.json`. Both server
+  completion flags must be true to confirm list completion. Missing flags are
+  reported as unverified; missing/repeated cursors, failures, or the page limit
+  leave the list incomplete. A detail count refers only to discovered orders.
 
 ## Provenance: this record may combine multiple health systems
 

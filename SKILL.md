@@ -167,10 +167,14 @@ GAPS.md first — a user can share *that* instead of their PHI.
   some instances use `/MyChart-PRD` or lowercase); timezone from `Intl`. The
   catalog is prefix-relative so none of this needs editing per instance.
   Validated on three live production instances with zero code changes.
-- **Test results:** the per-order key (`eorderid`) is
-  `GetList → newResultGroups[].key` — derive it from the JSON, NOT by scraping
-  the rendered page. (The old page-scrape path is a fallback only; it can't
-  work in browser mode — see framebusting.)
+- **Test results:** follow `GetList` continuation until both completion flags
+  are true; `maxResults` is not proof of completeness. Send the returned
+  `groupBy` as `groupType` and map `organizationLoadMoreInfo[*].lastGroupKey`
+  into `lastGroupKeys`. Keep raw pages separately and check `_pagination.json`
+  and `GAPS.md` for incomplete/unverified discovery. Derive order keys from
+  `newResultGroups[].resultList` (fall back to the group's `key` for older
+  shapes); dedupe by organization and order, retaining the organization for
+  detail requests. No page scraping is needed.
 - **Framebusting (critical for browser mode):** loading an `app/*` SPA route in
   an iframe boots Epic's client, which detects it's framed and navigates itself
   to `Home/LogOut`, **killing the whole session** (~5-10s in). So browser-mode

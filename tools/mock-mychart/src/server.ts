@@ -75,6 +75,8 @@ export interface MockOpts {
   strictToken?: boolean;
   /** Serve an edge/WAF interstitial (NOT a login page) for api/* calls. */
   wafChallenge?: boolean;
+  /** Split the synthetic test-results list across two cursor-driven pages. */
+  paginateTestResults?: boolean;
 }
 
 /** Server-side truth about what the client did — the acceptance tests count
@@ -281,7 +283,19 @@ export function startMockMyChart(opts: MockOpts = {}): MockServer {
 
       // ---- api/* JSON endpoints
       if (path in simpleJson) return json(simpleJson[path]);
-      if (path === "api/test-results/GetList") return json(testResultsList);
+      if (path === "api/test-results/GetList") {
+        if (!opts.paginateTestResults) return json(testResultsList);
+        const next = JSON.stringify(body.lastGroupKeys) === JSON.stringify({ "synthetic-org": "page-one" });
+        if (body.lastGroupKeys && (!next || body.groupType !== "ORDER")) return json({ error: "bad cursor" }, 400);
+        return json({
+          ...testResultsList,
+          groupBy: "ORDER",
+          areResultsFullyLoaded: next,
+          isGroupingFullyLoaded: next,
+          organizationLoadMoreInfo: { "synthetic-org": { lastGroupKey: next ? "page-two" : "page-one", uniqueGroupCount: next ? 2 : 1 } },
+          newResultGroups: next ? testResultsList.newResultGroups : testResultsList.newResultGroups.slice(0, 1),
+        });
+      }
       if (path === "api/test-results/GetDetails") {
         const key = String(body.orderKey ?? "");
         return json(testResultDetails[key] ?? { error: `unknown order ${key}` });

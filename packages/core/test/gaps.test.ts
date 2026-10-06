@@ -91,6 +91,18 @@ describe("summarizeGaps", () => {
     expect(md).toContain("No failed or degraded endpoints. ✅");
   });
 
+  test("incomplete collection is concerning without inventing an HTTP attempt", () => {
+    const g = summarizeGaps([
+      { domain: "test-results", endpoint: "GetList", status: 200, bytes: 50, note: "", outcome: "ok" },
+      { domain: "test-results", endpoint: "GetList[completeness]", status: null, bytes: 0, note: "cursor repeated", outcome: "incomplete" },
+    ]);
+    expect(g.attempted).toBe(1);
+    expect(g.ok).toBe(1);
+    expect(g.concerns).toHaveLength(1);
+    expect(renderGapsMd(g)).toContain("cursor repeated");
+    expect(renderGapsMd(g)).not.toContain("No failed or degraded endpoints");
+  });
+
   test("skipped rows land in their own bucket, and stoppedEarly is surfaced", () => {
     const g = summarizeGaps(
       [
