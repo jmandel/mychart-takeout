@@ -298,7 +298,7 @@ export function startMockMyChart(opts: MockOpts = {}): MockServer {
         return json({ organizations: [{ id: "ORG1", name: "Example Health" }] });
       }
       if (path === "api/conversations/GetConversationList") {
-        return json(conversationList(Number(body.tag ?? 0)));
+        return json(conversationList(Number(body.tag ?? 0), body.localLoadParams));
       }
       if (path === "api/conversations/GetConversationDetails") {
         return json(conversationDetails[String(body.id ?? "")] ?? { messages: [] });

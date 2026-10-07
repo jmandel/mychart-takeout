@@ -81,7 +81,11 @@ describe.skipIf(!CHROMIUM)("in-browser export against mock MyChart", () => {
     expect(files["structured/visits/visitnotes_meta/02.json"]).toBeDefined();
   });
 
-  test("messages: threads with per-message HTML", () => {
+  test("messages: older threads survive an empty list page into the downloaded ZIP", () => {
+    expect(JSON.parse(textOf("structured/messages/list_tag1.json")).localSummary.hasMoreConversations).toBe(true);
+    expect(JSON.parse(textOf("structured/messages/list_tag1_p2.json")).conversations).toEqual([]);
+    expect(JSON.parse(textOf("structured/messages/list_tag1_p3.json")).localSummary.hasMoreConversations).toBe(false);
+    expect(files["structured/messages/list_tag1_p4.json"]).toBeUndefined();
     expect(textOf("structured/messages/threads_full/000_Lab_results_question.json")).toContain("TH1");
     expect(textOf("structured/messages/threads_full/000_Lab_results_question_m0.html")).toContain("lab results");
     expect(files["structured/messages/threads_full/000_Lab_results_question_m1.html"]).toBeDefined();
@@ -92,6 +96,9 @@ describe.skipIf(!CHROMIUM)("in-browser export against mock MyChart", () => {
     expect(att!.length).toBe(40_000);
     const idx = JSON.parse(textOf("structured/messages/_threads_full_index.json"));
     expect(idx).toHaveLength(2);
+    expect(idx.map((t: { hthId: string; tag: number }) => [t.hthId, t.tag])).toEqual([["TH1", 1], ["TH2", 1]]);
+    const gaps = JSON.parse(textOf("gaps.json"));
+    expect(gaps.concerns.some((r: { domain: string; outcome: string }) => r.domain === "messages" && r.outcome === "incomplete")).toBe(false);
   });
 
   test("flowsheets: two pages, terminated by no-new-ISOs", () => {

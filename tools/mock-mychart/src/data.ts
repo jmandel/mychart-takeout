@@ -358,24 +358,40 @@ export const visitNotes: Record<string, unknown> = {
 export const foldersList = { folders: [{ name: "Inbox" }, { name: "Sent" }] };
 export const organizationsList = { organizations: [{ id: "ORG1", name: "Example Health" }] };
 
-export function conversationList(tag: number): unknown {
+export function conversationList(tag: number, loadParams: unknown = {}): unknown {
+  const p = (loadParams && typeof loadParams === "object" ? loadParams : {}) as Record<string, unknown>;
+  const recent = { hthId: "TH1", subject: "Lab results question", organizationId: "ORG1", hasAttachments: true };
   if (tag === 1) {
+    // Synthetic search boundaries: only the correct start cursor reaches TH2.
+    // The empty middle page must not end discovery or reuse oldestLoaded.
+    if (!p.loadEndInstantISO && p.pagingInfo === 1) {
+      if (p.loadStartInstantISO === "2001-03-01T00:00:00Z") {
+        return { conversations: [], localSummary: {
+          hasMoreConversations: true, oldestLoadedInstantISO: "",
+          oldestSearchedInstantISO: "2001-02-01T00:00:00Z", pagingInfo: 0,
+        } };
+      }
+      if (p.loadStartInstantISO === "2001-02-01T00:00:00Z") {
+        return { conversations: [recent, { hthId: "TH2", subject: "Refill request" }],
+          localSummary: { hasMoreConversations: false } };
+      }
+    }
     return {
-      conversations: [
-        { hthId: "TH1", subject: "Lab results question", organizationId: "ORG1", hasAttachments: true },
-      ],
+      conversations: [recent],
+      localSummary: { hasMoreConversations: true, oldestLoadedInstantISO: "2001-03-02T00:00:00Z",
+        oldestSearchedInstantISO: "2001-03-01T00:00:00Z", pagingInfo: 0 },
     };
   }
   if (tag === 2) {
     return {
       conversations: [
-        { hthId: "TH2", subject: "Refill request" },
         // duplicate of TH1: exercises first-tag-wins dedupe
         { hthId: "TH1", subject: "Lab results question", organizationId: "ORG1" },
       ],
+      localSummary: { hasMoreConversations: false },
     };
   }
-  return { conversations: [] };
+  return { conversations: [], localSummary: { hasMoreConversations: false } };
 }
 
 export const conversationDetails: Record<string, unknown> = {

@@ -24,8 +24,8 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
   }
   const conv = new Map<string, ConvMeta>();
   for (const tag of folderTags(ctx.store.getJson("structured/messages/folders.json"))) {
-    // A list pages by time: localSummary.hasMoreConversations + the oldest
-    // instant loaded so far as the next window's end (see paging.ts).
+    // Older pages use the searched boundary as loadStart, with loadEnd empty.
+    // Unlike oldestLoaded, oldestSearched can advance across empty pages.
     let firstShapeBad = false;
     const res = await sweep<Record<string, unknown>, string>({
       ctx,
@@ -33,10 +33,10 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
       endpoint: `GetConversationList[tag${tag}]`,
       first: "",
       recordComplete: false,
-      fetchPage: async (loadEnd, page) => {
+      fetchPage: async (loadStart, page) => {
         const r = await ctx.mc.api("api/conversations/GetConversationList", {
           tag,
-          localLoadParams: { loadStartInstantISO: "", loadEndInstantISO: loadEnd, numberToLoad: 9999 },
+          localLoadParams: { loadStartInstantISO: loadStart, loadEndInstantISO: "", pagingInfo: 1 },
           externalLoadParams: {},
           searchQuery: "",
           PageNonce: ctx.nonce,
@@ -66,7 +66,7 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
         if (!isRecord(j)) return null;
         const convs = (Array.isArray(j.conversations) ? j.conversations : []).filter(isRecord);
         const ls = isRecord(j.localSummary) ? j.localSummary : {};
-        const oldest = typeof ls.oldestLoadedInstantISO === "string" && ls.oldestLoadedInstantISO ? ls.oldestLoadedInstantISO : undefined;
+        const oldest = typeof ls.oldestSearchedInstantISO === "string" && ls.oldestSearchedInstantISO ? ls.oldestSearchedInstantISO : undefined;
         return { items: convs, end: ls.hasMoreConversations !== true, next: oldest };
       },
       key: (c) => convId(c),
