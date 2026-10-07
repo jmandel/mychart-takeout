@@ -67,7 +67,7 @@ bun run build:web                            # emits apps/web-build/dist/
 Re-run any time you're signed in; it always pulls fresh data. Output lands
 in the `--out` dir — start with its `PATIENT_SUMMARY.md` and `README.md`.
 
-`export` flags: `--out DIR` · `--ccda` (standards C-CDA) ·
+`export` flags: `--out DIR` · `--ccda` (standards C-CDA) · `--access-log` (opt-in) ·
 `--no-raw` (don't keep raw bodies) · `--only PHASE` (one of: structured,
 test-results, visits, messages, flowsheets, access-log, documents, ccda,
 salvage, report).
@@ -81,7 +81,9 @@ salvage, report).
   status, patient-tracked flowsheets (all readings, paginated), implanted
   devices (UDI/model/serial), care to-dos, linked organizations, record-sharing
   posture, communication preferences, account security settings, and the
-  **access log** (who viewed the record, incl. third-party apps; paginated).
+  **access log** (who viewed the record, incl. third-party apps; paginated —
+  opt-in: `--access-log`, or the checkbox on "scan first & choose", since it
+  can run to thousands of pages).
 - **Documents — content, not just the list**: insurance-card scans, consent
   e-signatures, outside-provider records (PDF/TIFF/HTML) under
   `documents/other/`. Often data that exists in no structured field or C-CDA.

@@ -43,6 +43,8 @@ export interface Selection {
   clinical: boolean;
   messages: boolean;
   documents: boolean;
+  /** Opt-in (unchecked by default): large, slow, and audit data, not record data. */
+  accessLog: boolean;
   excludeDocIds: string[];
 }
 
@@ -350,11 +352,11 @@ export function ensureOverlay(): Overlay {
       const boxes: { key: keyof Omit<Selection, "excludeDocIds">; el: HTMLInputElement }[] = [];
       const docChecks: { dcsId: string; el: HTMLInputElement }[] = [];
       const rowCss = "display:flex;align-items:flex-start;gap:8px;";
-      const row = (label: string, sub = "", indent = false): HTMLInputElement => {
+      const row = (label: string, sub = "", indent = false, checked = true): HTMLInputElement => {
         const wrap = el("label", rowCss + (indent ? "margin-left:22px;" : "") + "cursor:pointer;");
         const cb = document.createElement("input");
         cb.type = "checkbox";
-        cb.checked = true;
+        cb.checked = checked;
         cb.style.cssText = "margin-top:2px;accent-color:#2563eb;";
         wrap.appendChild(cb);
         const text = el("span", "");
@@ -412,12 +414,17 @@ export function ensureOverlay(): Overlay {
         msgsCb.addEventListener("change", syncAtt);
       }
 
+      // Last, and off by default: who viewed the record. Can be thousands of
+      // pages (it once used a whole export's time budget), so it's opt-in.
+      boxes.push({ key: "accessLog", el: row("Access log", "who viewed your record — can be very large and slow", false, false) });
+
       const go = button("Export selected", T.accent);
       go.addEventListener("click", () => {
         const sel: Selection = {
           clinical: true,
           messages: true,
           documents: true,
+          accessLog: false,
           excludeDocIds: [],
         };
         for (const b of boxes) sel[b.key] = b.el.checked;

@@ -9,7 +9,7 @@
  *   eval <js> | eval --file F
  *   api <url> [--post JSON] [--method M] [--out FILE]
  *   snapshot <name>
- *   export [--out DIR] [--no-raw] [--ccda] [--only PHASE]...
+ *   export [--out DIR] [--no-raw] [--ccda] [--access-log] [--only PHASE]...
  *   report --dir DIR
  */
 import { readFileSync, writeFileSync } from "node:fs";
@@ -43,7 +43,7 @@ interface Args {
   opts: Record<string, string>;
   multi: Record<string, string[]>;
 }
-const BOOL = new Set(["no-raw", "ccda", "proxies"]);
+const BOOL = new Set(["access-log", "no-raw", "ccda", "proxies"]);
 const MULTI = new Set(["only"]);
 
 function parse(argv: string[]): Args {
@@ -133,9 +133,11 @@ async function exportSubject(session: CdpSession, outDir: string, o: ExportOpts)
 async function runExport(a: Args): Promise<void> {
   const out = a.opts.out ?? "export";
   const ccda = !!a.flags.ccda;
+  // Opt-in, as in the browser: the access log can run to thousands of pages.
+  const accessLog = !!a.flags["access-log"];
   const proxies = !!a.flags.proxies;
   const defaults = [
-    "structured", "testResults", "visits", "messages", "flowsheets", "accessLog", "documents",
+    "structured", "testResults", "visits", "messages", "flowsheets", ...(accessLog ? ["accessLog"] : []), "documents",
     ...(ccda ? ["ccda"] : []), "salvage", "report",
   ];
   const only = (a.multi.only ?? []).map(norm);

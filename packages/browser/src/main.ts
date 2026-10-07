@@ -42,7 +42,7 @@ export interface RunOpts extends ExportSelection {
   /** Also request/download the standards C-CDA package (async server-side). */
   ccda?: boolean;
   /** Category filter from the selection card; omitted = everything (default). */
-  categories?: { clinical?: boolean; messages?: boolean; documents?: boolean };
+  categories?: { clinical?: boolean; messages?: boolean; documents?: boolean; accessLog?: boolean };
   /** Documents (dcsID) the user opted out of on the selection card. */
   excludeDocIds?: string[];
   /** Census's LoadOtherDocuments payload — pre-seeded so the documents phase
@@ -279,6 +279,7 @@ async function scanFirst(): Promise<void> {
           clinical: sel.clinical,
           messages: sel.messages,
           documents: sel.documents,
+          accessLog: sel.accessLog,
         },
         excludeDocIds: sel.excludeDocIds,
         docListJson: census.listJson,

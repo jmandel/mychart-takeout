@@ -58,7 +58,7 @@ async function withExport(
     }, mode);
     await page.addScriptTag({ content: bundle });
     const b64 = await page.evaluate(async () => {
-      const bytes = await globalThis.__mychartExport!.run();
+      const bytes = await globalThis.__mychartExport!.run({ categories: { accessLog: true } });
       let binary = "";
       for (const byte of bytes) binary += String.fromCharCode(byte);
       return btoa(binary);

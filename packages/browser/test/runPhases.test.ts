@@ -40,7 +40,7 @@ function scenario(endAfter = Infinity) {
 describe("browser phase budgets", () => {
   test("access logs finish beyond the records deadline with their own allowance", async () => {
     const s = scenario(3);
-    const timings = await runBrowserPhases(s.ctx, { ccda: true }, (name) => {
+    const timings = await runBrowserPhases(s.ctx, { ccda: true, categories: { accessLog: true } }, (name) => {
       if (name === "structured") s.advance(90);
     }, budgets);
     expect(s.pageCount()).toBe(3);
@@ -52,7 +52,7 @@ describe("browser phase budgets", () => {
 
   test("a never-ending access log stops at its own deadline and preserves records", async () => {
     const s = scenario();
-    const timings = await runBrowserPhases(s.ctx, {}, (name) => {
+    const timings = await runBrowserPhases(s.ctx, { categories: { accessLog: true } }, (name) => {
       if (name === "structured") s.advance(90);
     }, budgets);
     expect(s.ctx.signal).toEqual({ aborted: true, reason: "run-deadline" });
@@ -69,7 +69,7 @@ describe("browser phase budgets", () => {
     "does not restart after %s and records remaining selected phases",
     async (reason) => {
       const s = scenario();
-      await runBrowserPhases(s.ctx, {}, (name) => {
+      await runBrowserPhases(s.ctx, { categories: { accessLog: true } }, (name) => {
         if (name === "messages") {
           s.ctx.signal.aborted = true;
           s.ctx.signal.reason = reason;
@@ -88,13 +88,22 @@ describe("browser phase budgets", () => {
 
   test("the records budget still stops a slow primary phase", async () => {
     const s = scenario();
-    await runBrowserPhases(s.ctx, {}, (name) => {
+    await runBrowserPhases(s.ctx, { categories: { accessLog: true } }, (name) => {
       if (name === "visits") s.advance(101);
     }, budgets);
     expect(s.ctx.signal.reason).toBe("run-deadline");
     expect(s.pageCount()).toBe(0);
     expect(summarizeGaps(s.ctx.manifest).skipped.map((p) => p.endpoint))
       .toEqual(["flowsheets", "messages", "documents", "accessLog"]);
+  });
+
+  test("access logs are opt-in: a default export never starts them", async () => {
+    const s = scenario();
+    const timings = await runBrowserPhases(s.ctx, {}, () => {}, budgets);
+    expect(timings.map((t) => t.phase)).not.toContain("accessLog");
+    expect(s.pageCount()).toBe(0);
+    expect(s.sink.has("synthetic/messages.json")).toBe(true);
+    expect(s.ctx.manifest.some((m) => m.outcome === "skipped")).toBe(false);
   });
 
   test("a messages/documents selection never starts access logs", async () => {
