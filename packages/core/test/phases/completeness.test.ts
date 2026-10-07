@@ -137,3 +137,54 @@ describe("flowsheets: a bound reached is reported", () => {
     expect(ctx.manifest.find((m) => m.endpoint === "GetFlowsheetReadings[00]")?.outcome).toBe("incomplete");
   });
 });
+
+describe("messages: conversation lists page the way the portal does", () => {
+  // 9 local conversations, newest first, served 3 at a time from the window
+  // that starts at loadStartInstantISO (older than it), as the portal's own
+  // message center requests them; one outside org with 2 of its own.
+  const at = (i: number) => new Date(Date.UTC(2026, 0, 30 - i)).toISOString();
+  const local = Array.from({ length: 9 }, (_, i) => ({ hthId: `L${i}`, subject: `l${i}`, t: at(i) }));
+  const ext = [{ hthId: "X0", subject: "x0", t: at(2), organizationId: "EXT" }, { hthId: "X1", subject: "x1", t: at(20), organizationId: "EXT" }];
+  const page = (all: { t: string }[], start: string | undefined, n: number) => {
+    const older = all.filter((c) => !start || c.t < start).slice(0, n);
+    const oldest = older.at(-1)?.t ?? start ?? "";
+    return { list: older, summary: { hasMoreConversations: all.filter((c) => !start || c.t < start).length > n, oldestLoadedInstantISO: oldest, oldestSearchedInstantISO: "1999-01-01T00:00:00.000Z", pagingInfo: 2, numberLoaded: older.length } };
+  };
+
+  test("next window starts at the oldest loaded so far; outside orgs paged via externalLoadParams", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const c = new FakeClient({
+      "api/conversations/GetFoldersList": { folders: [] },
+      "api/conversations/GetOrganizations": { organizations: {
+        a: { organizationId: "LOCAL", isLocal: true, hasCommunicationCenter: true, hasInbox: true },
+        b: { organizationId: "EXT", isLocal: false, hasCommunicationCenter: true, hasInbox: true },
+      } },
+      "api/conversations/GetConversationList": (init: FetchInit) => {
+        const b = bodyOf(init);
+        if (b.tag !== 1) return { conversations: [], localSummary: { hasMoreConversations: false } };
+        bodies.push(b);
+        const lp = b.localLoadParams as Record<string, unknown> | undefined;
+        const ep = ((b.externalLoadParams as Record<string, Record<string, Record<string, unknown> | undefined>>).EXT ?? {}).communicationCenter;
+        const l = lp ? page(local, lp.loadStartInstantISO as string, 3) : null;
+        const e = ep ? page(ext, ep.loadStartInstantISO as string, 1) : null;
+        return {
+          conversations: [...(l?.list ?? []), ...(e?.list ?? [])],
+          localSummary: l?.summary ?? { hasMoreConversations: false },
+          externalSummaries: e ? { EXT: { communicationCenter: e.summary } } : {},
+        };
+      },
+      "api/conversations/GetConversationDetails": (init: FetchInit) => ({ hthId: bodyOf(init).id, messages: [] }),
+    });
+    const { ctx, sink } = makeTestCtx(c);
+    await phases.messages(ctx);
+    const index = sink.json("structured/messages/_threads_full_index.json") as { hthId: string }[];
+    expect(index.map((x) => x.hthId).sort()).toEqual([...local.map((x) => x.hthId), "X0", "X1"].sort());
+    // First request: empty window, pagingInfo 1, the outside org included; never numberToLoad.
+    expect(bodies[0]!.localLoadParams).toEqual({ loadStartInstantISO: "", loadEndInstantISO: "", pagingInfo: 1 });
+    expect((bodies[0]!.externalLoadParams as Record<string, unknown>).EXT).toBeDefined();
+    expect(JSON.stringify(bodies)).not.toContain("numberToLoad");
+    // Second request: starts at the oldest LOADED (not "searched"), pagingInfo carried forward.
+    expect(bodies[1]!.localLoadParams).toEqual({ loadStartInstantISO: at(2), loadEndInstantISO: "", pagingInfo: 2 });
+    expect(summarizeGaps(ctx.manifest).concerns).toEqual([]);
+  });
+});

@@ -23,21 +23,20 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
     // ignored (as in export.py)
   }
   const conv = new Map<string, ConvMeta>();
+  const orgs = ctx.store.getJson("structured/messages/organizations.json");
   for (const tag of folderTags(ctx.store.getJson("structured/messages/folders.json"))) {
-    // A list pages by time: localSummary.hasMoreConversations + the oldest
-    // instant loaded so far as the next window's end (see paging.ts).
+    // Paged exactly as the portal's message center does (listState below).
     let firstShapeBad = false;
-    const res = await sweep<Record<string, unknown>, string>({
+    const res = await sweep<Record<string, unknown>, ListState>({
       ctx,
       domain: "messages",
       endpoint: `GetConversationList[tag${tag}]`,
-      first: "",
+      first: initialListState(orgs),
       recordComplete: false,
-      fetchPage: async (loadEnd, page) => {
+      fetchPage: async (state, page) => {
         const r = await ctx.mc.api("api/conversations/GetConversationList", {
           tag,
-          localLoadParams: { loadStartInstantISO: "", loadEndInstantISO: loadEnd, numberToLoad: 9999 },
-          externalLoadParams: {},
+          ...listParams(state),
           searchQuery: "",
           PageNonce: ctx.nonce,
         });
@@ -62,12 +61,11 @@ export async function messages(ctx: PhaseCtx): Promise<void> {
         }
         return j;
       },
-      parse: (j) => {
+      parse: (j, state) => {
         if (!isRecord(j)) return null;
         const convs = (Array.isArray(j.conversations) ? j.conversations : []).filter(isRecord);
-        const ls = isRecord(j.localSummary) ? j.localSummary : {};
-        const oldest = typeof ls.oldestLoadedInstantISO === "string" && ls.oldestLoadedInstantISO ? ls.oldestLoadedInstantISO : undefined;
-        return { items: convs, end: ls.hasMoreConversations !== true, next: oldest };
+        const next = mergeListState(state, j);
+        return { items: convs, end: !listHasMore(next), next };
       },
       key: (c) => convId(c),
     });
@@ -275,4 +273,92 @@ async function withOlderMessages(
   // The portal returns a thread oldest-first; keep that order.
   const merged = [...older, ...first].sort((a, b) => deliveredAt(a).localeCompare(deliveredAt(b)));
   return { ...detail, messages: merged, hasMoreMessages: !res.complete, _olderMessagePages: rawPages };
+}
+
+/**
+ * Conversation-list paging, mirrored from the portal's own message center
+ * (communication-center bundle: It/q/me/Ot, read live Oct 2026). Each source —
+ * the local organization and every linked outside organization's message
+ * center/inbox/outbox — keeps a summary; the next request asks each source
+ * that still has more for the window starting at its OLDEST LOADED instant so
+ * far (a running minimum), carrying `pagingInfo` forward. No numberToLoad.
+ * (`oldestSearchedInstantISO` is what the portal uses for SEARCH results only.)
+ * Outside organizations go in externalLoadParams; sending `{}` — as this
+ * exporter did — never asks for their conversations at all.
+ */
+interface Summary {
+  more: boolean;
+  oldestLoaded: string;
+  pagingInfo: number;
+}
+type Box = "communicationCenter" | "inbox" | "outbox";
+export interface ListState {
+  local: Summary;
+  external: Record<string, Partial<Record<Box, Summary>>>;
+}
+
+const freshSummary = (): Summary => ({ more: true, oldestLoaded: "", pagingInfo: 1 });
+
+/** The portal's me(): a summary per non-local organization and its boxes. */
+export function initialListState(organizations: unknown): ListState {
+  const external: ListState["external"] = {};
+  const os = isRecord(organizations) && isRecord(organizations.organizations)
+    ? Object.values(organizations.organizations)
+    : isRecord(organizations) && Array.isArray(organizations.organizations) ? organizations.organizations : [];
+  for (const o of os) {
+    if (!isRecord(o) || o.isLocal !== false || typeof o.organizationId !== "string" || !o.organizationId) continue;
+    external[o.organizationId] = o.hasCommunicationCenter
+      ? { ...(o.hasInbox ? { communicationCenter: freshSummary() } : {}) }
+      : { ...(o.hasInbox ? { inbox: freshSummary() } : {}), ...(o.hasOutbox ? { outbox: freshSummary() } : {}) };
+  }
+  return { local: freshSummary(), external };
+}
+
+/** The portal's It(): load params for a source that still has more. */
+function params(sm: Summary | undefined): Record<string, unknown> | undefined {
+  return sm?.more ? { loadStartInstantISO: sm.oldestLoaded, loadEndInstantISO: "", pagingInfo: sm.pagingInfo } : undefined;
+}
+
+export function listParams(st: ListState): Record<string, unknown> {
+  const externalLoadParams: Record<string, unknown> = {};
+  for (const [org, boxes] of Object.entries(st.external)) {
+    externalLoadParams[org] = {
+      communicationCenter: params(boxes.communicationCenter),
+      inbox: params(boxes.inbox),
+      outbox: params(boxes.outbox),
+    };
+  }
+  return { localLoadParams: params(st.local), externalLoadParams };
+}
+
+const earlier = (a: string, b: string): string =>
+  !a ? b : !b ? a : new Date(a).getTime() > new Date(b).getTime() ? b : a;
+
+/** The portal's q(prev, response, isSearch=false). A source the response
+ *  doesn't mention has no more. */
+function merge(prev: Summary, resp: unknown): Summary {
+  if (!isRecord(resp)) return { ...prev, more: false };
+  const loaded = typeof resp.oldestLoadedInstantISO === "string" ? resp.oldestLoadedInstantISO : "";
+  const pi = typeof resp.pagingInfo === "number" ? resp.pagingInfo : 1;
+  return {
+    more: prev.more ? resp.hasMoreConversations === true : false,
+    oldestLoaded: earlier(prev.oldestLoaded, loaded),
+    pagingInfo: prev.pagingInfo < 0 || pi < 0 ? -1 : Math.max(pi, prev.pagingInfo),
+  };
+}
+
+export function mergeListState(st: ListState, page: Record<string, unknown>): ListState {
+  const ext = isRecord(page.externalSummaries) ? page.externalSummaries : {};
+  const external: ListState["external"] = {};
+  for (const [org, boxes] of Object.entries(st.external)) {
+    const r = isRecord(ext[org]) ? (ext[org] as Record<string, unknown>) : {};
+    external[org] = Object.fromEntries(
+      Object.entries(boxes).map(([box, sm]) => [box, merge(sm as Summary, r[box])]),
+    );
+  }
+  return { local: merge(st.local, page.localSummary), external };
+}
+
+function listHasMore(st: ListState): boolean {
+  return st.local.more || Object.values(st.external).some((b) => Object.values(b).some((sm) => sm?.more));
 }

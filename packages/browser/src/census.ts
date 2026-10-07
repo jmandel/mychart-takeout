@@ -10,7 +10,7 @@
  * (verified against a production instance where this technique priced a 63 MB
  * scan without downloading it).
  */
-import { extractAttachmentRef, folderTags, isLoggedOutUrl, Mc } from "@mychart/core";
+import { extractAttachmentRef, folderTags, initialListState, isLoggedOutUrl, listParams, Mc } from "@mychart/core";
 import { BrowserClient } from "./client";
 import type { Resolved } from "./detect";
 import { step } from "./journal";
@@ -162,17 +162,18 @@ export async function runCensus(
   const seen = new Set<string>();
   // Same folder set as the export phase: 1–6 plus every tag the portal lists.
   let tags = folderTags(null);
+  let listState = initialListState(null);
   try {
     tags = folderTags((await mc.api("api/conversations/GetFoldersList", {})).json);
+    listState = initialListState((await mc.api("api/conversations/GetOrganizations", {})).json);
   } catch {
-    /* fall back to 1–6 */
+    /* fall back to 1–6, local only */
   }
   for (const tag of tags) {
     try {
       const r = await mc.api("api/conversations/GetConversationList", {
         tag,
-        localLoadParams: { loadStartInstantISO: "", loadEndInstantISO: "", numberToLoad: 9999 },
-        externalLoadParams: {},
+        ...listParams(listState), // first page, as the portal asks for it (incl. outside orgs)
         searchQuery: "",
         PageNonce: "census",
       });
