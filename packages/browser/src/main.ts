@@ -118,6 +118,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
 
   log(`Exporting from ${origin}${prefix} (token via ${resolved.source}, build ${BUILD}) …`);
   markExportStarted();
+  const stopActivity = keepUserActive();
   const cat = { clinical: true, messages: true, documents: true, ...(opts.categories ?? {}) };
   // Selection flow with the structured phase deselected: the documents phase
   // reads the list from the store, so seed it from the census.
@@ -171,6 +172,7 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   } catch (e) {
     log(`!! diagnostics failed: ${e}`);
   }
+  stopActivity();
   const zip = sink.finalize();
   const partial = ctx.signal.aborted || gaps.byOutcome.incomplete > 0 || gaps.skipped.length > 0;
   const lastPhase = phaseTimings.at(-1)?.phase;
@@ -205,6 +207,31 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     finish("done");
   }
   return zip;
+}
+
+/**
+ * Classic MyChart signs out a page whose USER has been idle — no click or
+ * keypress — for its session timeout, regardless of API traffic: checkActivity()
+ * watches $$WPUtil.setActivity() (wired to body click/keypress) and calls
+ * autoLogout -> Login?action=logout. A long export with the user waiting on it
+ * would be signed out mid-run. While a run is in progress, tell the page what
+ * a click would: the user is here. The server session is kept alive by the
+ * page's own 30s Home/KeepAlive ping. Stops when the run ends.
+ */
+function keepUserActive(): () => void {
+  const touch = (): boolean => {
+    try {
+      const u = (window as unknown as { $$WPUtil?: { setActivity?: () => void } }).$$WPUtil;
+      if (typeof u?.setActivity !== "function") return false;
+      u.setActivity();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  step(touch() ? "activity: page idle timer refreshed during export" : "activity: no page idle hook ($$WPUtil.setActivity)");
+  const t = setInterval(touch, 60_000);
+  return () => clearInterval(t);
 }
 
 declare global {
