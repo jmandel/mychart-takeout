@@ -54,15 +54,52 @@ describe("accessLog phase", () => {
     expect(sink.keys("structured/access-log/portal_page_").length).toBe(1);
   });
 
-  test("a server that never ends and never adds anything stops on the backstop and SAYS so", async () => {
+  test("a server that never ends and never reaches further back stops on the backstop and SAYS so", async () => {
     const c = new FakeClient({
       "api/access-logs/GetPortalAccessLogEntries": () => ({ entries: [{ x: 1 }], nextLineToParse: 1 }),
       "api/access-logs/GetThirdPartyAccessLogEntries": () => ({ entries: [], nextLineToParse: -1 }),
     });
     const { ctx, sink } = makeTestCtx(c);
     await phases.accessLog(ctx);
-    expect(sink.keys("structured/access-log/portal_page_").length).toBeLessThanOrEqual(7);
+    expect(sink.keys("structured/access-log/portal_page_").length).toBeLessThanOrEqual(11);
     const row = ctx.manifest.find((m) => m.endpoint === "portal/GetEntries[completeness]");
     expect(row?.outcome).toBe("incomplete");
+  });
+
+  test("keeps going while entries reach further back, even when some pages add nothing new", async () => {
+    // Live: 6 of 635 third-party pages were all-duplicates mid-stream.
+    let n = 0;
+    const page = () => {
+      n++;
+      const day = n % 3 === 0 ? n - 1 : n; // every 3rd page repeats the previous day's entry
+      const last = n === 40;
+      return { entries: [{ d: day, accessTime: new Date(Date.UTC(2026, 0, 1) - day * 86_400_000).toISOString() }], nextLineToParse: last ? -1 : 1 };
+    };
+    const c = new FakeClient({
+      "api/access-logs/GetPortalAccessLogEntries": () => ({ entries: [], nextLineToParse: -1 }),
+      "api/access-logs/GetThirdPartyAccessLogEntries": page,
+    });
+    const { ctx, sink } = makeTestCtx(c);
+    await phases.accessLog(ctx);
+    expect(sink.keys("structured/access-log/third-party_page_").length).toBe(40);
+    expect(ctx.manifest.some((m) => m.outcome === "incomplete")).toBe(false);
+  });
+
+  test("Stop ends the list where it is and records it as stopped by the user", async () => {
+    let n = 0;
+    let stop = false;
+    const c = new FakeClient({
+      "api/access-logs/GetPortalAccessLogEntries": () => {
+        n++;
+        if (n === 5) stop = true;
+        return { entries: [{ accessTime: new Date(Date.UTC(2026, 0, 1) - n * 86_400_000).toISOString() }], nextLineToParse: 1 };
+      },
+      "api/access-logs/GetThirdPartyAccessLogEntries": () => ({ entries: [], nextLineToParse: -1 }),
+    });
+    const { ctx, sink } = makeTestCtx(c);
+    ctx.stopRequested = () => stop;
+    await phases.accessLog(ctx);
+    expect(sink.keys("structured/access-log/portal_page_").length).toBe(5);
+    expect(ctx.manifest.find((m) => m.endpoint === "portal/GetEntries[completeness]")?.note).toContain("stopped by you");
   });
 });

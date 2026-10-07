@@ -55,7 +55,8 @@ export interface Overlay {
   setChecking(msg: string): void;
   setReady(actions: ReadyActions): void;
   /** One-line status; safe to call repeatedly (updates in place). */
-  setBusy(status: string): void;
+  /** `stop` adds a secondary button (e.g. "Stop & download" for a long list). */
+  setBusy(status: string, stop?: { label: string; onClick(): void }): void;
   setSelect(census: Census, onExport: (sel: Selection) => void): void;
   setDone(zip: Uint8Array, filename?: string, warning?: string): void;
   /** `link` is the one escape hatch a failure may offer (e.g. "MyChart is
@@ -332,8 +333,8 @@ export function ensureOverlay(): Overlay {
       );
     },
 
-    setBusy(status: string) {
-      if (state === "busy" && busyLine) {
+    setBusy(status: string, stop?: { label: string; onClick(): void }) {
+      if (state === "busy" && busyLine && !stop) {
         busyLine.textContent = status;
         return;
       }
@@ -344,7 +345,17 @@ export function ensureOverlay(): Overlay {
         return;
       }
       const line = statusLine(status, T.ink);
-      render("busy", line);
+      if (stop) {
+        const b = button(stop.label, T.line, T.ink);
+        b.addEventListener("click", () => {
+          b.disabled = true;
+          b.textContent = "Stopping…";
+          stop.onClick();
+        });
+        render("busy", line, b);
+      } else {
+        render("busy", line);
+      }
       busyLine = line;
     },
 

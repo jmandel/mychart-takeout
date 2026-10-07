@@ -101,9 +101,12 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
 
   const client = new BrowserClient(origin, prefix);
   const sink = new ZipSink();
+  let stopAsked = false;
   const ctx = makeCtx({
     client,
     sink,
+    status: (m) => overlay.setBusy(m),
+    stopRequested: () => stopAsked,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     log,
     // The ladder already verified this token with a real API call — seed it so
@@ -122,7 +125,11 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     await ctx.store.saveJson(OTHER_DOCUMENTS_LIST_KEY, opts.docListJson);
   }
   const phaseTimings = await runBrowserPhases(ctx, opts, (name, index, total) => {
-    overlay.setBusy(`Exporting ${PHASE_LABEL[name] ?? name} (${index}/${total})…`);
+    const label = `Exporting ${PHASE_LABEL[name] ?? name} (${index}/${total})…`;
+    // The access log is opt-in, last, and can run long with no time limit —
+    // the user can end it and still get everything fetched so far.
+    if (name === "accessLog") overlay.setBusy(label, { label: "Stop & download", onClick: () => (stopAsked = true) });
+    else overlay.setBusy(label);
   });
   overlay.setBusy("Building the report…");
   await ctx.store.saveJson("_manifest.json", ctx.manifest);
@@ -168,7 +175,9 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   const partial = ctx.signal.aborted || gaps.byOutcome.incomplete > 0 || gaps.skipped.length > 0;
   const lastPhase = phaseTimings.at(-1)?.phase;
   const warning = partial
-    ? ctx.signal.reason === "run-deadline"
+    ? stopAsked && !ctx.signal.aborted
+      ? "Partial export: you stopped the access-log download early. Everything else was exported. See GAPS.md."
+      : ctx.signal.reason === "run-deadline"
       ? `Partial export. Time limit reached during ${PHASE_LABEL[lastPhase ?? ""] ?? "export"}. See GAPS.md.`
       : "Partial export. Some selected data could not be retrieved. See GAPS.md."
     : undefined;

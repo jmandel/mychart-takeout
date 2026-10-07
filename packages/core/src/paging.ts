@@ -12,7 +12,11 @@
  *  3. A page that adds nothing new is NOT an end signal either — 6 of those 635
  *     pages were all-duplicates mid-stream. Only several in a row (maxDryPages)
  *     stop the loop, as a backstop.
- *  4. Every stop that isn't the server's end signal (backstop, page bound,
+ *  4. For long, time-ordered lists, progress is how far BACK the list has
+ *     reached (`frontier`), not wall-clock time: a portal that keeps reaching
+ *     older entries is still delivering, however long it takes. Stalling
+ *     (maxDryPages pages reaching no further back) is what stops it.
+ *  5. Every stop that isn't the server's end signal (backstop, page bound,
  *     failed request, aborted run, missing cursor) records an `incomplete` row,
  *     so GAPS.md says so instead of the export looking complete.
  */
@@ -42,6 +46,12 @@ export interface SweepOpts<I, C> {
   key(item: I): string;
   maxPages?: number;
   maxDryPages?: number;
+  /** Progress measure for time-ordered lists (smaller = further back, e.g. a
+   *  timestamp). When set, a "dry" page is one that reaches no further back,
+   *  instead of one that adds no new items. */
+  frontier?(item: I): number | undefined;
+  /** Called after each page with the running totals (for a progress line). */
+  onPage?(unique: number, frontier: number | undefined, pages: number): void;
   /** Record a summary row even when complete (default true). */
   recordComplete?: boolean;
 }
@@ -62,10 +72,15 @@ export async function sweep<I, C>(o: SweepOpts<I, C>): Promise<SweepResult<I>> {
   let pages = 0;
   let dry = 0;
   let complete = false;
+  let front: number | undefined;
   let reason = `page bound reached (${maxPages} pages) while the server still reported more`;
   for (let page = 0; page < maxPages; page++) {
     if (o.ctx.signal.aborted) {
       reason = `run stopped (${o.ctx.signal.reason}) before the list finished`;
+      break;
+    }
+    if (o.ctx.stopRequested()) {
+      reason = "stopped by you before the list finished";
       break;
     }
     let json: unknown | null;
@@ -86,6 +101,7 @@ export async function sweep<I, C>(o: SweepOpts<I, C>): Promise<SweepResult<I>> {
     }
     pages++;
     let fresh = 0;
+    let advanced = false;
     for (const it of p.items) {
       const k = o.key(it);
       if (!seen.has(k)) {
@@ -93,15 +109,24 @@ export async function sweep<I, C>(o: SweepOpts<I, C>): Promise<SweepResult<I>> {
         items.push(it);
         fresh++;
       }
+      const f = o.frontier?.(it);
+      if (f !== undefined && Number.isFinite(f) && (front === undefined || f < front)) {
+        front = f;
+        advanced = true;
+      }
     }
+    o.onPage?.(items.length, front, pages);
     if (p.end) {
       complete = true;
       reason = p.endNote ?? "server reported the end of the list";
       break;
     }
-    dry = fresh === 0 ? dry + 1 : 0;
+    const progressed = o.frontier ? advanced : fresh > 0;
+    dry = progressed ? 0 : dry + 1;
     if (dry >= maxDry) {
-      reason = `${maxDry} consecutive pages added nothing new while the server still reported more`;
+      reason = o.frontier
+        ? `${maxDry} consecutive pages reached no further back while the server still reported more`
+        : `${maxDry} consecutive pages added nothing new while the server still reported more`;
       break;
     }
     if (p.next === undefined) {

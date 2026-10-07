@@ -7,7 +7,9 @@ export interface ExportSelection {
   categories?: { clinical?: boolean; messages?: boolean; documents?: boolean; accessLog?: boolean };
 }
 
-export const BROWSER_BUDGETS = { recordsMs: 15 * 60_000, accessLogMs: 15 * 60_000 };
+/** accessLogMs 0 = no time limit: the access log stops on lack of progress
+ *  (paging.ts frontier) or the user's Stop button, not on the clock. */
+export const BROWSER_BUDGETS = { recordsMs: 15 * 60_000, accessLogMs: 0 };
 
 export interface PhaseTiming {
   phase: keyof typeof phases;
@@ -44,7 +46,7 @@ export async function runBrowserPhases(
       }
       break;
     }
-    if (name === "accessLog") ctx.health.deadlineAt = Date.now() + budgets.accessLogMs;
+    if (name === "accessLog") ctx.health.deadlineAt = budgets.accessLogMs > 0 ? Date.now() + budgets.accessLogMs : 0;
     onStart(name, i + 1, order.length);
     const t0 = Date.now();
     try {

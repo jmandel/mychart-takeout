@@ -44,6 +44,11 @@ export interface PhaseCtx {
   observedApiPaths?: () => string[];
   /** Documents the user chose to skip (census/selection flow) — by dcsID. */
   excludeDocIds?: ReadonlySet<string>;
+  /** One-line progress for the UI (e.g. "Access log: 4,200 entries, back to Mar 2024"). */
+  status(msg: string): void;
+  /** The user asked to stop the current long list and keep what's fetched.
+   *  Not an abort: the run finishes normally; the list records `incomplete`. */
+  stopRequested(): boolean;
 }
 
 export interface MakeCtxOpts {
@@ -58,6 +63,8 @@ export interface MakeCtxOpts {
   runBudgetMs?: number;
   observedApiPaths?: () => string[];
   excludeDocIds?: ReadonlySet<string>;
+  status?: (msg: string) => void;
+  stopRequested?: () => boolean;
 }
 
 export function makeCtx(opts: MakeCtxOpts): PhaseCtx {
@@ -76,6 +83,8 @@ export function makeCtx(opts: MakeCtxOpts): PhaseCtx {
     health,
     observedApiPaths: opts.observedApiPaths,
     excludeDocIds: opts.excludeDocIds,
+    status: opts.status ?? (() => {}),
+    stopRequested: opts.stopRequested ?? (() => false),
     rec(domain, endpoint, res, note = "", extra = {}) {
       const ok = res !== null && res.status === 200;
       // Classify real HTTP responses (they carry url/contentType); a bare

@@ -13,6 +13,11 @@ import { isRecord } from "../util";
  * third-party log keeps returning the SAME cursor while serving new rows (635
  * pages, 10k entries), and the portal log hands back -1, which as a request
  * value means "start over". See paging.ts.
+ *
+ * Opt-in, and long: entries come newest-first, so progress is how far back
+ * the list has reached. It runs as long as it keeps reaching older entries —
+ * no time limit — and stops on -1 (complete), on 10 pages that reach no
+ * further back, on a failure, or when the user presses Stop (all recorded).
  */
 const KINDS: [string, string][] = [
   ["portal", "api/access-logs/GetPortalAccessLogEntries"],
@@ -43,7 +48,16 @@ export async function accessLog(ctx: PhaseCtx): Promise<void> {
         return { items: j.entries, end: next === -1, next };
       },
       key: (e) => JSON.stringify(e),
+      frontier: (e) => (isRecord(e) && typeof e.accessTime === "string" ? Date.parse(e.accessTime) : undefined),
+      maxPages: 50_000,
+      maxDryPages: 10,
+      onPage: (n, front) =>
+        ctx.status(`Access log (${kind}): ${n.toLocaleString()} entries${front ? `, back to ${monthYear(front)}` : ""}…`),
     });
     ctx.log(`  ${kind}: ${res.items.length} unique entries over ${res.pages} page(s)${res.complete ? "" : " — INCOMPLETE"}`);
   }
+}
+
+function monthYear(t: number): string {
+  return new Date(t).toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
