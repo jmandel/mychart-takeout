@@ -7,9 +7,15 @@ export interface ExportSelection {
   categories?: { clinical?: boolean; messages?: boolean; documents?: boolean; accessLog?: boolean };
 }
 
-/** accessLogMs 0 = no time limit: the access log stops on lack of progress
- *  (paging.ts frontier) or the user's Stop button, not on the clock. */
-export const BROWSER_BUDGETS = { recordsMs: 15 * 60_000, accessLogMs: 0 };
+/**
+ * 0 = no time limit, which is the default for both. An export that is still
+ * making progress is never cut off by the clock: lists end on the portal's own
+ * end signal or a no-progress backstop (paging.ts), failures trip the circuit
+ * breaker / request timeouts / sign-out detection, and the user can press
+ * Stop & download at any time. (A 15-minute cap here once cut a slow but
+ * healthy export off mid-messages.) Tests pass explicit budgets.
+ */
+export const BROWSER_BUDGETS = { recordsMs: 0, accessLogMs: 0 };
 
 export interface PhaseTiming {
   phase: keyof typeof phases;
@@ -17,9 +23,9 @@ export interface PhaseTiming {
   abortedDuring: boolean;
 }
 
-/** Records share the existing budget. Access logs run last with their own
- * bounded allowance, so a large audit history cannot starve record downloads.
- * Never clear an abort or reset the shared circuit-breaker state. */
+/** Records first; the opt-in access log last, so a long audit history can't
+ * hold up record downloads. Optional budgets (0 = none). Never clear an abort
+ * or reset the shared circuit-breaker state. */
 export async function runBrowserPhases(
   ctx: PhaseCtx,
   selection: ExportSelection,
@@ -35,7 +41,7 @@ export async function runBrowserPhases(
     ...(cat.accessLog ? (["accessLog"] as const) : []),
   ];
   const timings: PhaseTiming[] = [];
-  if (!ctx.signal.aborted) ctx.health.deadlineAt = Date.now() + budgets.recordsMs;
+  if (!ctx.signal.aborted) ctx.health.deadlineAt = budgets.recordsMs > 0 ? Date.now() + budgets.recordsMs : 0;
   for (let i = 0; i < order.length; i++) {
     const name = order[i]!;
     if (ctx.signal.aborted) {

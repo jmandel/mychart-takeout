@@ -101,7 +101,7 @@ describe.skipIf(!CHROMIUM)("browser export time budgets", () => {
       const run = read(files, "_diagnostics/run.json");
       expect(run.stoppedEarly).toBeNull();
       expect(run.phaseTimings.at(-1).phase).toBe("accessLog");
-      expect(run.timeBudgetsMs).toEqual({ recordsMs: 900_000, accessLogMs: 0 });
+      expect(run.timeBudgetsMs).toEqual({ recordsMs: 0, accessLogMs: 0 }); // no time limits
       expect(files["structured/access-log/third-party_page_29.json"]).toBeDefined();
       expect(read(files, "gaps.json").concerns.some((c: { outcome: string }) => c.outcome === "incomplete")).toBe(false);
       expect(await page.getByText("Done — safe to close.", { exact: true }).isVisible()).toBe(true);
@@ -115,11 +115,11 @@ describe.skipIf(!CHROMIUM)("browser export time budgets", () => {
       async (page, files) => {
         expectRecords(files);
         const run = read(files, "_diagnostics/run.json");
-        expect(run.stoppedEarly).toBeNull(); // a user stop is not a run abort
+        expect(run.stoppedEarly).toBe("stopped-by-user");
         const gaps = read(files, "gaps.json");
         const row = gaps.concerns.find((c: { domain: string; outcome: string }) => c.domain === "access-log" && c.outcome === "incomplete");
-        expect(row?.note).toContain("stopped by you");
-        expect(await page.getByRole("alert").textContent()).toContain("you stopped the access-log download");
+        expect(row?.note).toContain("stopped-by-user");
+        expect(await page.getByRole("alert").textContent()).toContain("you stopped it during access log");
         // The warning must not take away the download: the partial-export
         // button is present and enabled. (No real download here — a pending
         // download artifact left Chromium hanging on close in the full suite.)

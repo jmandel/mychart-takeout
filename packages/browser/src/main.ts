@@ -51,6 +51,9 @@ export interface RunOpts extends ExportSelection {
 }
 
 /** Phase names → what the status line calls them. */
+/** signal.reason when the user pressed Stop & download. */
+const USER_STOP = "stopped-by-user";
+
 const PHASE_LABEL: Record<string, string> = {
   structured: "clinical data",
   testResults: "test results",
@@ -126,11 +129,18 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
     await ctx.store.saveJson(OTHER_DOCUMENTS_LIST_KEY, opts.docListJson);
   }
   const phaseTimings = await runBrowserPhases(ctx, opts, (name, index, total) => {
-    const label = `Exporting ${PHASE_LABEL[name] ?? name} (${index}/${total})…`;
-    // The access log is opt-in, last, and can run long with no time limit —
-    // the user can end it and still get everything fetched so far.
-    if (name === "accessLog") overlay.setBusy(label, { label: "Stop & download", onClick: () => (stopAsked = true) });
-    else overlay.setBusy(label);
+    // No time limit (runPhases.ts): the user can end the run at any point and
+    // still get everything fetched so far.
+    overlay.setBusy(`Exporting ${PHASE_LABEL[name] ?? name} (${index}/${total})…`, {
+      label: "Stop & download",
+      onClick: () => {
+        stopAsked = true;
+        if (!ctx.signal.aborted) {
+          ctx.signal.aborted = true;
+          ctx.signal.reason = USER_STOP;
+        }
+      },
+    });
   });
   overlay.setBusy("Building the report…");
   await ctx.store.saveJson("_manifest.json", ctx.manifest);
@@ -177,8 +187,8 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   const partial = ctx.signal.aborted || gaps.byOutcome.incomplete > 0 || gaps.skipped.length > 0;
   const lastPhase = phaseTimings.at(-1)?.phase;
   const warning = partial
-    ? stopAsked && !ctx.signal.aborted
-      ? "Partial export: you stopped the access-log download early. Everything else was exported. See GAPS.md."
+    ? ctx.signal.reason === USER_STOP
+      ? `Partial export: you stopped it during ${PHASE_LABEL[lastPhase ?? ""] ?? "the export"}. Everything fetched before that is in the ZIP. See GAPS.md.`
       : ctx.signal.reason === "run-deadline"
       ? `Partial export. Time limit reached during ${PHASE_LABEL[lastPhase ?? ""] ?? "export"}. See GAPS.md.`
       : "Partial export. Some selected data could not be retrieved. See GAPS.md."
@@ -187,6 +197,11 @@ async function run(opts: RunOpts = {}): Promise<Uint8Array> {
   log(`${partial ? "Partial export" : "Done"}: ${zip.length} bytes zipped${patient ? ` for ${patient}` : ""}.`);
   if (ctx.signal.aborted) {
     const r = ctx.signal.reason;
+    if (r === USER_STOP) {
+      log("Stopped by you. Everything fetched up to that point is in the zip; GAPS.md lists what was skipped.");
+      finish("done", r);
+      return zip;
+    }
     if (/^circuit-open/.test(r)) {
       log(`⚠ Export stopped early — repeated failures (${r}). Data is incomplete.`);
     } else if (r === "run-deadline") {
