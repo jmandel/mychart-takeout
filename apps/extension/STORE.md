@@ -41,7 +41,7 @@ with `bun run build:web` → `dist/extension.zip`; screenshots with
 
 ## Distribution
 
-- **Visibility**: Unlisted to start (install by link); switch to Public once a few portals are confirmed.
+- **Visibility**: Public (unlisted through v0.2.0; switched to Public with v0.3.0).
 - **Regions**: all. **Pricing**: free.
 
 ## Releasing an update
